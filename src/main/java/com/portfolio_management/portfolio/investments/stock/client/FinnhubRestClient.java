@@ -4,6 +4,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import com.portfolio_management.portfolio.investments.stock.exceptions.StockModuleException;
 import org.springframework.beans.factory.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -17,21 +19,32 @@ import java.util.List;
 @Component
 public class FinnhubRestClient {
 
+    private static final Logger log = LoggerFactory.getLogger(FinnhubRestClient.class);
+
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final String apiKey;
+    private final boolean mockMode;
 
     public FinnhubRestClient(
             @Value("${finnhub.base-url}") String baseUrl,
             @Value("${finnhub.api.key}") String apiKey,
+            @Value("${finnhub.mock-mode:false}") boolean mockMode,
             ObjectMapper objectMapper
     ) {
         this.restClient = RestClient.builder().baseUrl(baseUrl).build();
         this.objectMapper = objectMapper;
         this.apiKey = apiKey;
+        this.mockMode = mockMode;
+        if (mockMode) {
+            log.info("⚠️ Finnhub MOCK MODE ENABLED - Using demo data instead of real API");
+        }
     }
 
     public List<FinnhubSearchItem> searchStocks(String query, int limit) {
+        if (mockMode) {
+            return mockSearchStocks(query, limit);
+        }
         JsonNode root = getJson("/search", queryParam("q", query));
         JsonNode resultNode = root.path("result");
         List<FinnhubSearchItem> items = new ArrayList<>();
@@ -58,6 +71,9 @@ public class FinnhubRestClient {
     }
 
     public FinnhubProfile getCompanyProfile(String symbol) {
+        if (mockMode) {
+            return mockGetCompanyProfile(symbol);
+        }
         JsonNode root = getJson("/stock/profile2", queryParam("symbol", symbol));
         String ticker = root.path("ticker").asText(symbol);
         return new FinnhubProfile(
@@ -72,6 +88,9 @@ public class FinnhubRestClient {
     }
 
     public FinnhubQuote getQuote(String symbol) {
+        if (mockMode) {
+            return mockGetQuote(symbol);
+        }
         JsonNode root = getJson("/quote", queryParam("symbol", symbol));
         BigDecimal currentPrice = decimal(root, "c");
         if (currentPrice.compareTo(BigDecimal.ZERO) <= 0) {
@@ -136,6 +155,71 @@ public class FinnhubRestClient {
     }
 
     private record QueryParam(String name, String value) {
+    }
+
+    private List<FinnhubSearchItem> mockSearchStocks(String query, int limit) {
+        query = query.toUpperCase();
+        List<FinnhubSearchItem> items = new ArrayList<>();
+        String[][] data = {
+            {"AAPL", "AAPL", "Apple Inc", "Common Stock"},
+            {"TSLA", "TSLA", "Tesla Inc", "Common Stock"},
+            {"MSFT", "MSFT", "Microsoft Corporation", "Common Stock"},
+            {"GOOGL", "GOOGL", "Alphabet Inc", "Common Stock"},
+            {"AMZN", "AMZN", "Amazon.com Inc", "Common Stock"}
+        };
+        for (String[] row : data) {
+            if (row[0].contains(query) || row[2].toUpperCase().contains(query)) {
+                items.add(new FinnhubSearchItem(row[0], row[1], row[2], row[3]));
+                if (items.size() >= limit) break;
+            }
+        }
+        return items;
+    }
+
+    private FinnhubProfile mockGetCompanyProfile(String symbol) {
+        return switch (symbol.toUpperCase()) {
+            case "AAPL" -> new FinnhubProfile("AAPL", "Apple Inc", "NASDAQ", "US", "Technology", "USD", "https://www.apple.com");
+            case "TSLA" -> new FinnhubProfile("TSLA", "Tesla Inc", "NASDAQ", "US", "Consumer Cyclical", "USD", "https://www.tesla.com");
+            case "MSFT" -> new FinnhubProfile("MSFT", "Microsoft Corporation", "NASDAQ", "US", "Technology", "USD", "https://www.microsoft.com");
+            case "GOOGL" -> new FinnhubProfile("GOOGL", "Alphabet Inc", "NASDAQ", "US", "Communication Services", "USD", "https://www.google.com");
+            case "AMZN" -> new FinnhubProfile("AMZN", "Amazon.com Inc", "NASDAQ", "US", "Consumer Cyclical", "USD", "https://www.amazon.com");
+            default -> new FinnhubProfile(symbol, symbol + " Corp", "NASDAQ", "US", "Technology", "USD", "https://company.com");
+        };
+    }
+
+    private FinnhubQuote mockGetQuote(String symbol) {
+        return switch (symbol.toUpperCase()) {
+            case "AAPL" -> new FinnhubQuote(
+                new java.math.BigDecimal("192.11"),
+                new java.math.BigDecimal("1.22"),
+                new java.math.BigDecimal("0.64"),
+                new java.math.BigDecimal("193.00"),
+                new java.math.BigDecimal("189.71"),
+                new java.math.BigDecimal("190.20"),
+                new java.math.BigDecimal("190.89"),
+                System.currentTimeMillis() / 1000
+            );
+            case "TSLA" -> new FinnhubQuote(
+                new java.math.BigDecimal("245.50"),
+                new java.math.BigDecimal("-2.15"),
+                new java.math.BigDecimal("-0.87"),
+                new java.math.BigDecimal("248.99"),
+                new java.math.BigDecimal("244.00"),
+                new java.math.BigDecimal("247.80"),
+                new java.math.BigDecimal("247.65"),
+                System.currentTimeMillis() / 1000
+            );
+            default -> new FinnhubQuote(
+                new java.math.BigDecimal("150.00"),
+                new java.math.BigDecimal("0.00"),
+                new java.math.BigDecimal("0.00"),
+                new java.math.BigDecimal("150.50"),
+                new java.math.BigDecimal("149.50"),
+                new java.math.BigDecimal("149.75"),
+                new java.math.BigDecimal("150.00"),
+                System.currentTimeMillis() / 1000
+            );
+        };
     }
 
     public record FinnhubSearchItem(String symbol, String displaySymbol, String description, String type) {

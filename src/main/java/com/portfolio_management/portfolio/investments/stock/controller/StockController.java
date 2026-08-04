@@ -54,6 +54,7 @@ public class StockController {
 
     @GetMapping("/stocks/{symbol}")
     public ResponseEntity<CompanyDetailsResponse> getCompanyDetails(@PathVariable String symbol) {
+
         return ResponseEntity.ok(stockMarketService.getCompanyDetails(symbol));
     }
 
