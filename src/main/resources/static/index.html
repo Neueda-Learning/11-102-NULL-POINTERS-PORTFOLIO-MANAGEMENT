@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stock Module Frontend</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+<main class="container">
+    <h1>Portfolio Stock Module</h1>
+
+    <section class="card">
+        <h2>Settings</h2>
+        <label>Portfolio ID
+            <input id="portfolioId" type="number" value="1" min="1" />
+        </label>
+        <button id="loadHoldingsBtn">Load Holdings</button>
+    </section>
+
+    <section class="card">
+        <h2>1) Search Stocks</h2>
+        <div class="row">
+            <input id="searchQuery" placeholder="AAPL or Tesla" />
+            <button id="searchBtn">Search</button>
+        </div>
+        <table id="searchTable">
+            <thead><tr><th>Symbol</th><th>Name</th><th>Type</th><th>Action</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>2) Company Details</h2>
+        <pre id="companyDetails" class="json"></pre>
+    </section>
+
+    <section class="card">
+        <h2>3) Marketplace</h2>
+        <div class="row">
+            <input id="marketPage" type="number" value="1" min="1" />
+            <input id="marketSize" type="number" value="10" min="1" max="10" />
+            <button id="loadMarketplaceBtn">Load Page</button>
+        </div>
+        <table id="marketTable">
+            <thead><tr><th>Symbol</th><th>Name</th><th>Exchange</th><th>Price</th><th>Day %</th><th>Buy</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>4/5) Buy or Sell</h2>
+        <div class="row">
+            <input id="tradeSymbol" placeholder="Symbol" />
+            <input id="tradeQuantity" type="number" placeholder="Quantity" step="0.0001" min="0.0001" />
+            <button id="buyBtn">Buy</button>
+            <button id="sellBtn">Sell</button>
+        </div>
+        <pre id="tradeResult" class="json"></pre>
+    </section>
+
+    <section class="card">
+        <h2>6) Holdings</h2>
+        <table id="holdingsTable">
+            <thead><tr><th>Symbol</th><th>Shares</th><th>Avg Price</th><th>Current</th><th>Market Value</th><th>P/L</th><th>Details</th><th>Transactions</th><th>Subscribe</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>7) Holding Details</h2>
+        <pre id="holdingDetails" class="json"></pre>
+    </section>
+
+    <section class="card">
+        <h2>8) Transactions By Symbol</h2>
+        <div class="row">
+            <input id="txSymbol" placeholder="AAPL" />
+            <button id="loadTxBtn">Load Transactions</button>
+        </div>
+        <pre id="txOutput" class="json"></pre>
+    </section>
+
+    <section class="card">
+        <h2>9) Live Subscriptions + WebSocket</h2>
+        <div class="row">
+            <input id="subSymbols" placeholder="AAPL,TSLA,NVDA" />
+            <button id="subscribeBtn">Subscribe</button>
+            <button id="connectWsBtn">Connect WS</button>
+        </div>
+        <div id="wsStatus">WS: disconnected</div>
+        <pre id="liveOutput" class="json"></pre>
+    </section>
+
+    <section class="card">
+        <h2>Logs</h2>
+        <pre id="logOutput" class="json"></pre>
+    </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
+
