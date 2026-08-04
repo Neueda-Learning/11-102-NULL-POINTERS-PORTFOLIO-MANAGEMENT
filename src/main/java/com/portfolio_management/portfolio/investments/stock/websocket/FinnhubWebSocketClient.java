@@ -1,7 +1,7 @@
 package com.portfolio_management.portfolio.investments.stock.websocket;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.portfolio_management.portfolio.investments.stock.dto.LivePriceUpdateResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -186,4 +186,5 @@ public class FinnhubWebSocketClient {
         }
     }
 }
+
 
