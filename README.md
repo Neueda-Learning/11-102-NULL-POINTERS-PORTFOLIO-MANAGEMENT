@@ -2,6 +2,51 @@
 
 [TOC]
 
+## ✅ Stock Module - Quick Start
+
+### Working Status
+
+The **Stock module** is fully implemented with:
+- ✅ Complete REST APIs for stock operations
+- ✅ Finnhub integration (market data)
+- ✅ WebSocket for live price updates
+- ✅ Mock mode enabled (works without real API key)
+- ✅ Static HTML/CSS/JS frontend
+
+### Get Started Immediately
+
+1. **Run the app:**
+   ```bash
+   .\mvnw.cmd spring-boot:run
+   ```
+
+2. **Open frontend:**
+   - http://localhost:8080/
+
+3. **Test APIs (debug endpoints):**
+   - http://localhost:8080/api/debug/test-all
+
+### Documentation
+
+- **API Endpoints**: See `stocks.md` for complete request/response examples
+- **Testing Guide**: See `API_TESTING_GUIDE.md` for setup and troubleshooting
+- **Module Location**: `src/main/java/com/portfolio_management/portfolio/investments/stock/`
+
+### Quick Feature List
+
+- ✅ Search stocks | Browse marketplace (paginated, 100 symbols)
+- ✅ Buy/Sell stocks | Holdings with P/L calculations
+- ✅ Transaction history | Average cost basis tracking
+- ✅ Live WebSocket updates | Mock mode (no real API key needed)
+
+### Configuration
+
+- **Mock Mode**: Enabled (demo data) — Edit `src/main/resources/application.properties` to use real API
+- **Portfolio ID**: `1` in frontend — Change in `static/js/app.js` if needed
+- **Real API**: Get key from https://finnhub.io/register, then set `finnhub.mock-mode=false`
+
+---
+
 ## Overview
 
 Your team is challenged with designing an application to manage a financial portfolio.
