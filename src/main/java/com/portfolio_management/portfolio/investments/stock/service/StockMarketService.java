@@ -8,6 +8,8 @@ import com.portfolio_management.portfolio.investments.stock.dto.StockQuoteRespon
 import com.portfolio_management.portfolio.investments.stock.dto.StockSearchItemResponse;
 import com.portfolio_management.portfolio.investments.stock.exceptions.StockModuleException;
 import com.portfolio_management.portfolio.investments.stock.websocket.FinnhubWebSocketClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -16,6 +18,8 @@ import java.util.Locale;
 
 @Service
 public class StockMarketService {
+
+    private static final Logger log = LoggerFactory.getLogger(StockMarketService.class);
 
     private static final List<String> MARKET_SYMBOLS = List.of(
             "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK.B", "UNH", "JNJ",
@@ -79,17 +83,10 @@ public class StockMarketService {
         List<String> symbols = MARKET_SYMBOLS.subList(from, to);
         finnhubWebSocketClient.subscribeSymbols(symbols);
 
-        List<MarketplaceStockResponse> items = symbols.stream().map(symbol -> {
-            FinnhubRestClient.FinnhubProfile profile = finnhubRestClient.getCompanyProfile(symbol);
-            FinnhubRestClient.FinnhubQuote quote = finnhubRestClient.getQuote(symbol);
-            return new MarketplaceStockResponse(
-                    symbol,
-                    profile.companyName(),
-                    profile.exchange(),
-                    quote.currentPrice(),
-                    quote.changePercent()
-            );
-        }).toList();
+        List<MarketplaceStockResponse> items = symbols.stream()
+                .map(this::loadMarketplaceItem)
+                .filter(java.util.Objects::nonNull)
+                .toList();
 
         return new MarketplacePageResponse(safePage, safeSize, totalPages(safeSize), MARKET_SYMBOLS.size(), items);
     }
@@ -111,6 +108,23 @@ public class StockMarketService {
         return (int) Math.ceil((double) MARKET_SYMBOLS.size() / size);
     }
 
+    private MarketplaceStockResponse loadMarketplaceItem(String symbol) {
+        try {
+            FinnhubRestClient.FinnhubProfile profile = finnhubRestClient.getCompanyProfile(symbol);
+            FinnhubRestClient.FinnhubQuote quote = finnhubRestClient.getQuote(symbol);
+            return new MarketplaceStockResponse(
+                    symbol,
+                    profile.companyName(),
+                    profile.exchange(),
+                    quote.currentPrice(),
+                    quote.changePercent()
+            );
+        } catch (Exception ex) {
+            log.warn("Skipping symbol {} from marketplace page due to lookup error: {}", symbol, ex.getMessage());
+            return null;
+        }
+    }
+
     private String normalizeSymbolOrQuery(String value) {
         if (value == null || value.isBlank()) {
             throw new StockModuleException(HttpStatus.BAD_REQUEST, "query/symbol is required");
@@ -118,4 +132,5 @@ public class StockMarketService {
         return value.trim().toUpperCase(Locale.ROOT);
     }
 }
+
 

@@ -12,6 +12,7 @@ import com.portfolio_management.portfolio.investments.stock.repository.Transacti
 import com.portfolio_management.portfolio.investments.stock.websocket.FinnhubWebSocketClient;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -40,11 +41,13 @@ public class StockHoldingService {
         this.finnhubWebSocketClient = finnhubWebSocketClient;
     }
 
+    @Transactional(readOnly = true)
     public List<StockHoldingResponse> getHoldings(Long portfolioId) {
         List<StockEntity> holdings = stockRepository.findByAssetPortfolioPortfolioIdAndQuantityGreaterThan(portfolioId, ZERO);
         return holdings.stream().map(this::toHoldingResponse).toList();
     }
 
+    @Transactional(readOnly = true)
     public StockHoldingDetailsResponse getHoldingDetails(Long portfolioId, String symbol) {
         String normalizedSymbol = normalizeSymbol(symbol);
         StockEntity holding = stockRepository.findByAssetPortfolioPortfolioIdAndAssetSymbol(portfolioId, normalizedSymbol)
@@ -56,6 +59,7 @@ public class StockHoldingService {
         return new StockHoldingDetailsResponse(response, transactions);
     }
 
+    @Transactional(readOnly = true)
     public List<StockTransactionResponse> getTransactionsBySymbol(Long portfolioId, String symbol) {
         String normalizedSymbol = normalizeSymbol(symbol);
 
@@ -117,4 +121,5 @@ public class StockHoldingService {
         return symbol.trim().toUpperCase(Locale.ROOT);
     }
 }
+
 
