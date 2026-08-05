@@ -3,11 +3,15 @@ package com.portfolio_management.portfolio;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {
+		"com.portfolio_management.portfolio",
+		"com.portfolio.bonds"
+})
 public class PortfolioApplication {
 
 	public static void main(String[] args) {
 		SpringApplication.run(PortfolioApplication.class, args);
 	}
+
 
 }

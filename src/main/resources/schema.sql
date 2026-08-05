@@ -7,17 +7,16 @@ CREATE TABLE IF NOT EXISTS portfolio (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS asset (
+
     asset_id BIGINT AUTO_INCREMENT PRIMARY KEY,
 
     portfolio_id BIGINT NOT NULL,
 
     asset_type ENUM('STOCK','CRYPTO','BOND','CASH') NOT NULL,
 
-    symbol VARCHAR(20),
-
     asset_name VARCHAR(100) NOT NULL,
-
-    currency VARCHAR(10) default 'USD'
+    symbol VARCHAR(20) NOT NULL UNIQUE,
+    currency VARCHAR(10)  DEFAULT 'USD' ,
 
 
 );
@@ -27,7 +26,7 @@ CREATE TABLE IF NOT EXISTS transaction_history (
 
     portfolio_id BIGINT NOT NULL,
 
-    asset_id BIGINT NOT NULL,
+    asset_id BIGINT NULL,
 
     transaction_type ENUM('BUY','SELL') NOT NULL,
 
@@ -41,6 +40,19 @@ CREATE TABLE IF NOT EXISTS transaction_history (
         REFERENCES portfolio(portfolio_id)
         ON DELETE CASCADE,
 
+    FOREIGN KEY (asset_id)
+        REFERENCES asset(asset_id)
+        ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS bonds (
+    asset_id BIGINT PRIMARY KEY,
+    issuer VARCHAR(120) NOT NULL,
+    interest_rate DECIMAL(8,4) NOT NULL,
+    amount_invested DECIMAL(15,2) NOT NULL,
+    start_date DATE NOT NULL,
+    tenure_months INT NOT NULL,
+    maturity_date DATE NOT NULL,
     FOREIGN KEY (asset_id)
         REFERENCES asset(asset_id)
         ON DELETE CASCADE
