@@ -188,7 +188,7 @@ function buildStocksTable(rows) {
   const head = `<tr>
     <th>Symbol</th><th>Company</th><th>Shares</th>
     <th>Price</th><th>Cost Basis</th><th>Market Value</th>
-    <th>P/L</th><th>Details</th><th>View Performance</th><th>Action</th></tr>`;
+    <th>P/L</th><th>Details</th><th>Action</th></tr>`;
   const body = rows.map(r => {
     const pl = Number(r.profit_loss || 0);
     return `<tr>
@@ -200,7 +200,6 @@ function buildStocksTable(rows) {
       <td>${fmt(r.market_value)}</td>
       <td class="${pl>=0?'pos':'neg'}">${pl>=0?'+':''}${fmt(pl)}</td>
       <td><button class="detail-btn" onclick="showStockTransactions('${esc(r.symbol)}')">Details</button></td>
-      <td><button class="detail-btn" onclick="showStockPerformance('${esc(r.symbol)}')">View Performance</button></td>
       <td><button class="sell-btn" onclick="openSellModal(${r.asset_id},'${esc(r.asset_name)}')">Sell</button></td>
     </tr>`;
   }).join('');
