@@ -88,10 +88,25 @@ public class BondService {
 
     @Transactional
     public boolean deleteBond(Long id) {
-        if (!bondRepository.existsById(id)) {
+        Optional<Bond> bondOptional = bondRepository.findById(id);
+        if (bondOptional.isEmpty()) {
             return false;
         }
-        assetRepository.deleteById(id);
+
+        Bond bond = bondOptional.get();
+        Asset asset = bond.getAsset();
+
+        jdbcTemplate.update(
+                "INSERT INTO transaction_history (portfolio_id, asset_id, transaction_type, quantity, transaction_price, transaction_date) VALUES (?, ?, ?, ?, ?, NOW())",
+                asset.getPortfolioId(),
+                asset.getAssetId(),
+                "SELL",
+                new BigDecimal("1.0000"),
+                bond.getAmountInvested()
+        );
+
+        // Delete only the bond position. Asset metadata is intentionally retained for transaction history display.
+        bondRepository.deleteById(id);
         return true;
     }
 

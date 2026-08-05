@@ -240,6 +240,7 @@ public class PortfolioService {
 
         BigDecimal quantity = BigDecimal.ONE;
         BigDecimal price = BigDecimal.ZERO;
+        boolean bondSell = false;
 
         switch (assetType) {
             case "STOCK" -> {
@@ -250,6 +251,7 @@ public class PortfolioService {
             case "BOND" -> {
                 Map<String, Object> b = jdbcTemplate.queryForMap("SELECT * FROM bonds WHERE asset_id=?", assetId);
                 price = bd(b.get("amount_invested"));
+                bondSell = true;
             }
             case "CRYPTO" -> {
                 Map<String, Object> c = jdbcTemplate.queryForMap("SELECT * FROM crypto WHERE asset_id=?", assetId);
@@ -262,7 +264,12 @@ public class PortfolioService {
                 "INSERT INTO transaction_history (portfolio_id, asset_id, transaction_type, quantity, transaction_price, transaction_date) VALUES (?,?,'SELL',?,?,NOW())",
                 portfolioId, assetId, quantity, price);
 
-        jdbcTemplate.update("DELETE FROM asset WHERE asset_id=?", assetId);
+        if (bondSell) {
+            // Keep the asset master row so historical transactions can still display bond symbol/name.
+            jdbcTemplate.update("DELETE FROM bonds WHERE asset_id=?", assetId);
+        } else {
+            jdbcTemplate.update("DELETE FROM asset WHERE asset_id=?", assetId);
+        }
     }
 
     // ─── All Transactions ────────────────────────────────────────────────────
