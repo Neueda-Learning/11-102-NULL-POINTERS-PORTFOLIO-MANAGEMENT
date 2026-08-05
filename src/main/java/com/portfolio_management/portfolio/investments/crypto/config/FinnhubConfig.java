@@ -11,7 +11,7 @@ public class FinnhubConfig {
     @Value("${finnhub.base-url:https://finnhub.io/api/v1}")
     private String finnhubBaseUrl;
 
-    @Value("${finnhub.api-key:demo}")
+    @Value("${FINNHUB_API_KEY:demo}")
     private String finnhubApiKey;
 
     public String getFinnhubBaseUrl() {
