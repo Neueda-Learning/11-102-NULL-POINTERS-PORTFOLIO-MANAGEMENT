@@ -23,13 +23,12 @@ The **Stock module** is fully implemented with:
 2. **Open frontend:**
    - http://localhost:8080/
 
-3. **Test APIs (debug endpoints):**
-   - http://localhost:8080/api/debug/test-all
+3. **Test APIs:**
+   - http://localhost:8080/api/stocks/marketplace?page=1&size=10
 
 ### Documentation
 
 - **API Endpoints**: See `stocks.md` for complete request/response examples
-- **Testing Guide**: See `API_TESTING_GUIDE.md` for setup and troubleshooting
 - **Module Location**: `src/main/java/com/portfolio_management/portfolio/investments/stock/`
 
 ### Quick Feature List
