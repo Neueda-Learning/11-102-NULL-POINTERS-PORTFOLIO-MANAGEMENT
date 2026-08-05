@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS asset (
 
     asset_name VARCHAR(100) NOT NULL,
     symbol VARCHAR(20) NOT NULL UNIQUE,
-    currency VARCHAR(10)  DEFAULT 'USD'
+    currency VARCHAR(10)  DEFAULT 'USD' ,
 
 
 );
@@ -60,4 +60,33 @@ CREATE TABLE IF NOT EXISTS crypto (
     current_value DECIMAL(15,2) DEFAULT 0.00,
     profit_loss DECIMAL(15,2) DEFAULT 0.00,
     CONSTRAINT fk_crypto_asset FOREIGN KEY (asset_id) REFERENCES asset(asset_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS bonds (
+    asset_id BIGINT PRIMARY KEY,
+    issuer VARCHAR(120) NOT NULL,
+    interest_rate DECIMAL(8,4) NOT NULL,
+    amount_invested DECIMAL(15,2) NOT NULL,
+    start_date DATE NOT NULL,
+    tenure_months INT NOT NULL,
+    maturity_date DATE NOT NULL,
+    FOREIGN KEY (asset_id)
+        REFERENCES asset(asset_id)
+        ON DELETE CASCADE
+);
+
+
+CREATE TABLE IF NOT EXISTS stock (
+
+    asset_id BIGINT PRIMARY KEY,
+
+    quantity DECIMAL(15,4) NOT NULL,
+
+    purchase_price DECIMAL(15,2) NOT NULL,
+
+    purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY(asset_id)
+        REFERENCES asset(asset_id)
+        ON DELETE CASCADE
 );
