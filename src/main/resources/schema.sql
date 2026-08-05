@@ -19,9 +19,6 @@ CREATE TABLE IF NOT EXISTS asset (
     currency VARCHAR(10)  DEFAULT 'USD' ,
 
 
-    FOREIGN KEY (portfolio_id)
-        REFERENCES portfolio(portfolio_id)
-        ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS transaction_history (
 
@@ -61,11 +58,18 @@ CREATE TABLE IF NOT EXISTS bonds (
         ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS stocks (
+
+CREATE TABLE IF NOT EXISTS stock (
+
     asset_id BIGINT PRIMARY KEY,
-    exchange VARCHAR(60),
-    sector VARCHAR(60),
-    FOREIGN KEY (asset_id)
+
+    quantity DECIMAL(15,4) NOT NULL,
+
+    purchase_price DECIMAL(15,2) NOT NULL,
+
+    purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY(asset_id)
         REFERENCES asset(asset_id)
         ON DELETE CASCADE
 );
