@@ -32,6 +32,9 @@ build/
 ### VS Code ###
 .vscode/
 
+### Environment Variables ###
+.env
+
 # Local environment files
 .env
 
