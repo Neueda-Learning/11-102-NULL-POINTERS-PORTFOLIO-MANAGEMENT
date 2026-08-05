@@ -19,14 +19,20 @@ public class Asset {
     @Column("asset_id")
     private Long assetId;
 
+    @Column("portfolio_id")
+    private Long portfolioId;
+
     @Column("symbol")
     private String symbol;
 
-    @Column("name")
+    @Column("asset_name")
     private String name;
 
     @Column("asset_type")
     private String assetType;
+
+    @Column("currency")
+    private String currency;
 
     @Column("created_at")
     private LocalDateTime createdAt;

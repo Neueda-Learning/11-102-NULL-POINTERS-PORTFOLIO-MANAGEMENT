@@ -68,9 +68,9 @@ public class TransactionController {
 
     private TransactionHistoryDTO toDTO(Transaction transaction) {
         Asset asset = transaction.getAssetId() == null
-                ? new Asset(null, "UNKNOWN", "UNKNOWN", "UNKNOWN", null)
+                ? new Asset(null, null, "UNKNOWN", "UNKNOWN", "UNKNOWN", "USD", null)
                 : assetRepository.findById(transaction.getAssetId())
-                        .orElse(new Asset(transaction.getAssetId(), "UNKNOWN", "UNKNOWN", "UNKNOWN", null));
+                        .orElse(new Asset(transaction.getAssetId(), null, "UNKNOWN", "UNKNOWN", "UNKNOWN", "USD", null));
 
         Crypto crypto = transaction.getAssetId() == null
                 ? null

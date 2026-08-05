@@ -14,7 +14,7 @@ public interface AssetRepository extends CrudRepository<Asset, Long> {
     @Query("SELECT * FROM asset WHERE symbol = :symbol")
     Optional<Asset> findBySymbol(@Param("symbol") String symbol);
 
-    @Query("SELECT * FROM asset WHERE name = :name")
+    @Query("SELECT * FROM asset WHERE asset_name = :name")
     Optional<Asset> findByName(@Param("name") String name);
 }
 
