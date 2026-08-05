@@ -64,11 +64,7 @@
     <!-- ── DASHBOARD ───────────────────────────────────────────────────── -->
     <section id="section-dashboard" class="section active">
       <div class="section-header"><h2>Dashboard</h2></div>
-
-      <!-- Summary cards -->
       <div class="summary-grid" id="summary-cards"></div>
-
-      <!-- Charts -->
       <div class="charts-grid">
         <div class="card chart-card">
           <h3>Asset Allocation</h3>
@@ -104,21 +100,37 @@
     <!-- ── MARKETPLACE ──────────────────────────────────────────────────── -->
     <section id="section-marketplace" class="section">
       <div class="section-header">
-        <h2>Crypto Marketplace</h2>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;">
-          <button class="btn btn-secondary" onclick="refreshMarketplace()">🔄 Refresh Market</button>
-          <button class="btn btn-primary" onclick="openAddModal('CRYPTO')">+ Buy Crypto</button>
+        <h2>Marketplace</h2>
+        <div class="filter-row">
+          <label for="marketplace-filter">Category:</label>
+          <select id="marketplace-filter" onchange="loadMarketplace()">
+            <option value="STOCK">Stocks</option>
+            <option value="CRYPTO">Crypto</option>
+            <option value="BOND">Bonds</option>
+          </select>
         </div>
       </div>
       <div class="card table-card">
-        <div class="marketplace-toolbar">
+        <!-- Crypto toolbar — visible only when CRYPTO is selected -->
+        <div class="marketplace-toolbar" id="crypto-search-toolbar" style="display:none;">
           <label class="sr-only" for="market-symbol-input">Search crypto symbol</label>
           <input id="market-symbol-input" type="text" placeholder="Search crypto symbol e.g. BTCUSD" />
           <button class="btn btn-secondary" onclick="lookupCryptoBySymbol()">Search</button>
+          <button class="btn btn-secondary" onclick="refreshMarketplace()">🔄 Refresh Market</button>
+          <button class="btn btn-primary" onclick="openAddModal('CRYPTO')">+ Buy Crypto</button>
+        </div>
+        <!-- Pagination row — visible only when STOCK is selected -->
+        <div class="filter-row" id="marketplace-pagination-row" style="display:none;">
+          <button class="btn btn-secondary btn-sm" id="market-prev-btn" onclick="changeMarketplacePage(-1)">◀ Prev</button>
+          <span id="market-page-text" style="font-size:.85rem;color:var(--text-muted);">Page 1 of 1</span>
+          <button class="btn btn-secondary btn-sm" id="market-next-btn" onclick="changeMarketplacePage(1)">Next ▶</button>
         </div>
         <div id="market-status" class="status-bar"></div>
         <div id="market-lookup" class="market-lookup"></div>
-        <div id="market-grid"></div>
+        <!-- Crypto card grid -->
+        <div id="market-grid" style="display:none;"></div>
+        <!-- Stocks / Bonds table -->
+        <div id="market-container" style="overflow-x:auto;"></div>
       </div>
     </section>
 
@@ -246,7 +258,26 @@
   </div>
 </div>
 
+<!-- ═══ STOCK DETAILS / PERFORMANCE MODAL ══════════════════════════════════ -->
+<div class="modal-overlay" id="stock-insight-modal" onclick="closeStockInsightModal()">
+  <div class="modal large-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="stock-insight-title">📊 Stock Insight</h3>
+      <button class="modal-close" onclick="closeStockInsightModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="stock-insight-status" class="status-bar"></div>
+      <div id="stock-insight-content"></div>
+      <div id="stock-performance-wrap" class="chart-wrap" style="height:260px;display:none;">
+        <canvas id="chart-stock-performance"></canvas>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeStockInsightModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <script src="js/app.js"></script>
 </body>
 </html>
-

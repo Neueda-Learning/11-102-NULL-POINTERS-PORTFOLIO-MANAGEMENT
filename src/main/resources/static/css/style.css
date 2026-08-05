@@ -255,6 +255,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   transition: background .3s;
 }
 .table-card { padding: 20px; }
+#marketplace-pagination-row { justify-content: flex-end; margin-bottom: 10px; }
 
 /* ── Tables ───────────────────────────────────────────────────────────── */
 .data-table {

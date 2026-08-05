@@ -9,10 +9,21 @@ let pendingSell = null;
 let allocationChart = null;
 let performanceChart = null;
 let cryptoLookupTimer = null;
+let stockInsightChart = null;
+let stockSymbolLookupTimer = null;
+const DEFAULT_PORTFOLIO_ID = 1;
+const marketplaceState = {
+  category: 'STOCK',
+  previousCategory: 'STOCK',
+  page: 1,
+  size: 10,
+  totalPages: 1
+};
 
 // ─── Init ─────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
+  initStockAutoFill();
   navigateTo('dashboard');
 });
 
@@ -36,20 +47,11 @@ function navigateTo(section) {
   });
 
   switch (section) {
-    case 'dashboard':
-      loadDashboard();
-      break;
-    case 'holdings':
-      loadHoldings(document.getElementById('holdings-filter').value);
-      break;
-    case 'marketplace':
-      loadMarketplace();
-      break;
-    case 'transactions':
-      loadTransactions();
-      break;
-    default:
-      break;
+    case 'dashboard':    loadDashboard(); break;
+    case 'holdings':     loadHoldings(document.getElementById('holdings-filter').value); break;
+    case 'marketplace':  loadMarketplace(); break;
+    case 'transactions': loadTransactions(); break;
+    default: break;
   }
 }
 
@@ -108,9 +110,7 @@ function renderAllocationChart(cryptos) {
   const values = (source.length ? source : cryptos.slice(0, 5)).map(item => Number(item.currentValue || item.currentPrice || 0));
   const ctx = document.getElementById('chart-allocation').getContext('2d');
 
-  if (allocationChart) {
-    allocationChart.destroy();
-  }
+  if (allocationChart) allocationChart.destroy();
 
   allocationChart = new Chart(ctx, {
     type: 'doughnut',
@@ -131,9 +131,7 @@ function renderPerformanceChart(cryptos) {
   const source = cryptos.filter(item => Number(item.quantity) > 0 || Number(item.currentValue) > 0).slice(0, 8);
   const ctx = document.getElementById('chart-performance').getContext('2d');
 
-  if (performanceChart) {
-    performanceChart.destroy();
-  }
+  if (performanceChart) performanceChart.destroy();
 
   performanceChart = new Chart(ctx, {
     type: 'bar',
@@ -252,9 +250,9 @@ async function loadHoldings(type = 'ALL') {
 
 function buildStocksTable(rows) {
   const head = `<tr>
-    <th>Symbol</th><th>Company</th><th>Quantity</th>
-    <th>Avg Buy Price</th><th>Current Price</th><th>Invested Amount</th>
-    <th>P/L %</th><th>Action</th></tr>`;
+    <th>Symbol</th><th>Company</th><th>Shares</th>
+    <th>Avg Buy Price</th><th>Current Price</th><th>Cost Basis</th>
+    <th>Market Value</th><th>P/L</th><th>Details</th><th>Action</th></tr>`;
 
   const body = rows.map(row => {
     const investedAmount = Number(row.cost_basis || 0);
@@ -266,8 +264,10 @@ function buildStocksTable(rows) {
       <td>${num(row.quantity)}</td>
       <td>${fmt(row.purchase_price)}</td>
       <td>${fmt(row.current_price)}</td>
-      <td>${fmt(investedAmount)}</td>
+      <td>${fmt(row.cost_basis)}</td>
+      <td>${fmt(row.market_value)}</td>
       <td class="${plPct >= 0 ? 'pos' : 'neg'}">${plPct >= 0 ? '+' : ''}${plPct.toFixed(2)}%</td>
+      <td><button class="detail-btn" onclick="showStockTransactions('${escJs(row.symbol)}')">Details</button></td>
       <td><button class="sell-btn" onclick='openSellModal(${json({ id: row.asset_id, name: row.asset_name, type: "GENERIC" })})'>Sell</button></td>
     </tr>`;
   }).join('');
@@ -300,7 +300,7 @@ function buildBondsTable(rows) {
 
 function buildCryptoTable(rows) {
   const head = `<tr>
-    <th>Symbol</th><th>Company</th><th>Quantity</th>
+    <th>Symbol</th><th>Name</th><th>Quantity</th>
     <th>Avg Buy Price</th><th>Current Price</th><th>Invested Amount</th>
     <th>P/L %</th><th>Action</th></tr>`;
 
@@ -332,23 +332,122 @@ function buildCryptoTable(rows) {
 
 // ─── Marketplace ──────────────────────────────────────────────────────────
 async function loadMarketplace() {
+  const filter = document.getElementById('marketplace-filter');
+  marketplaceState.category = filter ? filter.value : 'STOCK';
+  if (marketplaceState.category !== marketplaceState.previousCategory) {
+    marketplaceState.page = 1;
+    marketplaceState.previousCategory = marketplaceState.category;
+  }
+
+  const container = document.getElementById('market-container');
   const marketGrid = document.getElementById('market-grid');
-  const marketStatus = document.getElementById('market-status');
-  marketGrid.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;">Refreshing market data...</p>';
-  marketStatus.innerHTML = '';
+  const statusEl = document.getElementById('market-status');
+  const pagerRow = document.getElementById('marketplace-pagination-row');
+  const cryptoToolbar = document.getElementById('crypto-search-toolbar');
+  const lookupContainer = document.getElementById('market-lookup');
+
+  container.innerHTML = '';
+  marketGrid.innerHTML = '';
+  statusEl.innerHTML = '';
+  if (lookupContainer) lookupContainer.innerHTML = '';
+
+  const isStock = marketplaceState.category === 'STOCK';
+  const isCrypto = marketplaceState.category === 'CRYPTO';
+
+  pagerRow.style.display = isStock ? 'flex' : 'none';
+  if (cryptoToolbar) cryptoToolbar.style.display = isCrypto ? 'flex' : 'none';
+  container.style.display = isCrypto ? 'none' : '';
+  marketGrid.style.display = isCrypto ? '' : 'none';
 
   try {
-    await refreshMarketplacePrices(true);
-    const marketData = normalizeCryptos(await apiFetch('/api/v1/crypto/batch', {
-      method: 'POST',
-      body: JSON.stringify(CRYPTO_MARKET_SYMBOLS)
-    }));
+    if (isStock) {
+      container.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;">Loading stocks...</p>';
+      const data = await apiFetch(`/api/stocks/marketplace?page=${marketplaceState.page}&size=${marketplaceState.size}`);
+      marketplaceState.totalPages = Math.max(1, Number(data.totalPages || 1));
+      updateMarketplacePager();
+      container.innerHTML = buildMarketplaceStocksTable(data.items || []);
+      statusEl.innerHTML = `<span class="status-success">✅ ${data.items?.length || 0} stock(s) loaded</span>`;
+    } else if (isCrypto) {
+      marketGrid.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;">Refreshing market data...</p>';
+      await refreshMarketplacePrices(true);
+      const marketData = normalizeCryptos(await apiFetch('/api/v1/crypto/batch', {
+        method: 'POST',
+        body: JSON.stringify(CRYPTO_MARKET_SYMBOLS)
+      }));
+      const sorted = [...marketData].sort((a, b) => Number(b.currentPrice || 0) - Number(a.currentPrice || 0));
+      marketGrid.innerHTML = sorted.length ? buildMarketplaceCards(sorted) : emptyState('No marketplace crypto data available.');
+      statusEl.innerHTML = `<span class="status-success">✅ ${sorted.length} crypto asset(s) loaded</span>`;
+    } else {
+      // BOND
+      container.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;">Loading bonds...</p>';
+      const bonds = safeArray(await apiFetch('/api/v1/portfolio/holdings?type=BOND'));
+      container.innerHTML = bonds.length ? buildBondsTable(bonds) : emptyState('No bond listings available.');
+      statusEl.innerHTML = `<span class="status-success">✅ ${bonds.length} bond(s) loaded</span>`;
+    }
+  } catch (e) {
+    const target = isCrypto ? marketGrid : container;
+    target.innerHTML = `<p class="status-error">❌ Failed: ${esc(e.message)}</p>`;
+  }
+}
 
-    const sorted = [...marketData].sort((a, b) => Number(b.currentPrice || 0) - Number(a.currentPrice || 0));
-    marketGrid.innerHTML = sorted.length ? buildMarketplaceCards(sorted) : emptyState('No marketplace crypto data available.');
-    marketStatus.innerHTML = `<span class="status-success">✅ ${sorted.length} crypto asset(s) loaded</span>`;
-  } catch (error) {
-    marketGrid.innerHTML = `<p class="status-error">❌ Failed: ${esc(error.message)}</p>`;
+function changeMarketplacePage(delta) {
+  const nextPage = marketplaceState.page + delta;
+  if (nextPage < 1 || nextPage > marketplaceState.totalPages) return;
+  marketplaceState.page = nextPage;
+  loadMarketplace();
+}
+
+function updateMarketplacePager() {
+  const pageText = document.getElementById('market-page-text');
+  const prevBtn = document.getElementById('market-prev-btn');
+  const nextBtn = document.getElementById('market-next-btn');
+  pageText.textContent = `Page ${marketplaceState.page} of ${marketplaceState.totalPages}`;
+  prevBtn.disabled = marketplaceState.page <= 1;
+  nextBtn.disabled = marketplaceState.page >= marketplaceState.totalPages;
+}
+
+function buildMarketplaceStocksTable(rows) {
+  if (!rows.length) return emptyState('No stocks found for this page.');
+
+  const head = `<tr>
+    <th>Symbol</th><th>Company</th><th>Exchange</th>
+    <th>Current Price</th><th>Day %</th><th>Buy</th><th>View Performance</th></tr>`;
+
+  const body = rows.map(r => `
+    <tr>
+      <td><strong>${esc(r.symbol)}</strong></td>
+      <td>${esc(r.companyName)}</td>
+      <td>${esc(r.exchange)}</td>
+      <td>${fmt(r.currentPrice)}</td>
+      <td class="${Number(r.dailyChangePercent || 0) >= 0 ? 'pos' : 'neg'}">${Number(r.dailyChangePercent || 0).toFixed(2)}%</td>
+      <td><button class="btn btn-primary btn-sm" onclick="buyFromMarketplace('${escJs(r.symbol)}', '${escJs(r.companyName)}')">Buy</button></td>
+      <td><button class="detail-btn" onclick="showStockPerformance('${escJs(r.symbol)}')">View Performance</button></td>
+    </tr>`
+  ).join('');
+
+  return `<table class="data-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+
+async function buyFromMarketplace(symbol, companyName) {
+  const qtyInput = prompt(`Enter quantity to buy for ${companyName} (${symbol})`, '1');
+  if (qtyInput === null) return;
+  const quantity = Number(qtyInput);
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    alert('Please enter a valid quantity greater than 0.');
+    return;
+  }
+
+  try {
+    await apiFetch(`/api/portfolios/${DEFAULT_PORTFOLIO_ID}/stocks/buy`, {
+      method: 'POST',
+      body: JSON.stringify({ symbol, quantity })
+    });
+    alert(`Bought ${quantity} share(s) of ${symbol}`);
+    if (document.getElementById('section-holdings').classList.contains('active')) {
+      loadHoldings(document.getElementById('holdings-filter').value);
+    }
+  } catch (e) {
+    alert(`Buy failed: ${e.message}`);
   }
 }
 
@@ -381,9 +480,7 @@ function buildMarketplaceCards(rows) {
 
 async function refreshMarketplace(silent = false) {
   await loadMarketplace();
-  if (!silent) {
-    await refreshDashboardAndHoldings();
-  }
+  if (!silent) await refreshDashboardAndHoldings();
 }
 
 async function refreshMarketplacePrices(silent = false) {
@@ -392,9 +489,9 @@ async function refreshMarketplacePrices(silent = false) {
   );
 
   if (!silent) {
-    const failures = results.filter(result => result.status === 'rejected');
-    const marketStatus = document.getElementById('market-status');
-    marketStatus.innerHTML = failures.length
+    const failures = results.filter(r => r.status === 'rejected');
+    const statusEl = document.getElementById('market-status');
+    statusEl.innerHTML = failures.length
       ? `<span class="status-error">⚠️ Refreshed with ${failures.length} warning(s)</span>`
       : '<span class="status-success">✅ Market prices refreshed</span>';
   }
@@ -420,10 +517,7 @@ async function lookupCryptoBySymbol() {
       crypto = normalizeCrypto(await apiFetch(`/api/v1/crypto/${encodeURIComponent(symbol)}/price`, { method: 'PUT' }));
     }
 
-    if (!CRYPTO_MARKET_SYMBOLS.includes(symbol)) {
-      CRYPTO_MARKET_SYMBOLS.push(symbol);
-    }
-
+    if (!CRYPTO_MARKET_SYMBOLS.includes(symbol)) CRYPTO_MARKET_SYMBOLS.push(symbol);
     lookupContainer.innerHTML = buildLookupCard(crypto);
   } catch (error) {
     lookupContainer.innerHTML = `<p class="status-error">❌ ${esc(error.message)}</p>`;
@@ -456,7 +550,7 @@ async function loadTransactions() {
   try {
     const rows = safeArray(await apiFetch('/api/v1/transactions/history'));
     if (!rows.length) {
-      container.innerHTML = emptyState('No crypto transactions yet.');
+      container.innerHTML = emptyState('No transactions yet.');
       return;
     }
 
@@ -487,6 +581,115 @@ async function loadTransactions() {
   }
 }
 
+// ─── Stock Insights (Details / Performance) ───────────────────────────────
+function openStockInsightModal(title) {
+  document.getElementById('stock-insight-title').textContent = title;
+  document.getElementById('stock-insight-status').innerHTML = '';
+  document.getElementById('stock-insight-content').innerHTML = '';
+  document.getElementById('stock-performance-wrap').style.display = 'none';
+  document.getElementById('stock-insight-modal').classList.add('open');
+}
+
+function closeStockInsightModal() {
+  document.getElementById('stock-insight-modal').classList.remove('open');
+}
+
+async function showStockTransactions(symbol) {
+  openStockInsightModal(`🧾 Transactions: ${symbol}`);
+  const statusEl = document.getElementById('stock-insight-status');
+  const contentEl = document.getElementById('stock-insight-content');
+  statusEl.innerHTML = '<span style="color:var(--text-muted);">Loading transaction details...</span>';
+
+  try {
+    const tx = await apiFetch(`/api/portfolios/${DEFAULT_PORTFOLIO_ID}/stocks/${encodeURIComponent(symbol)}/transactions`);
+    if (!tx.length) {
+      contentEl.innerHTML = emptyState(`No transactions found for ${symbol}.`);
+      statusEl.innerHTML = '';
+      return;
+    }
+
+    const head = `<tr><th>ID</th><th>Type</th><th>Quantity</th><th>Price</th><th>Date</th></tr>`;
+    const body = tx.map(t => `
+      <tr>
+        <td>${esc(t.transactionId)}</td>
+        <td><span class="badge ${t.action === 'BUY' ? 'badge-buy' : 'badge-sell'}">${esc(t.action)}</span></td>
+        <td>${num(t.quantity, 4)}</td>
+        <td>${fmt(t.transactionPrice)}</td>
+        <td>${fmtDate(t.transactionDate)}</td>
+      </tr>`
+    ).join('');
+
+    contentEl.innerHTML = `<table class="data-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+    statusEl.innerHTML = `<span class="status-success">✅ ${tx.length} transaction(s) loaded</span>`;
+  } catch (e) {
+    statusEl.innerHTML = `<span class="status-error">❌ ${e.message}</span>`;
+  }
+}
+
+async function showStockPerformance(symbol) {
+  openStockInsightModal(`📈 Performance: ${symbol}`);
+  const statusEl = document.getElementById('stock-insight-status');
+  const wrapEl = document.getElementById('stock-performance-wrap');
+  statusEl.innerHTML = '<span style="color:var(--text-muted);">Loading performance...</span>';
+
+  try {
+    const result = await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}/performance`);
+    const points = result.points || [];
+    if (!points.length) {
+      document.getElementById('stock-insight-content').innerHTML = emptyState(`No performance data available for ${symbol}.`);
+      statusEl.innerHTML = '';
+      return;
+    }
+
+    wrapEl.style.display = 'flex';
+    renderStockPerformanceChart(points, `${result.companyName || symbol} (${symbol})`);
+    statusEl.innerHTML = `<span class="status-success">✅ Last ${points.length} day(s) performance loaded</span>`;
+  } catch (e) {
+    statusEl.innerHTML = `<span class="status-error">❌ ${e.message}</span>`;
+  }
+}
+
+function renderStockPerformanceChart(points, label) {
+  const ctx = document.getElementById('chart-stock-performance').getContext('2d');
+  if (stockInsightChart) stockInsightChart.destroy();
+
+  const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
+  const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
+  stockInsightChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: points.map(p => p.date),
+      datasets: [{
+        label,
+        data: points.map(p => Number(p.closePrice)),
+        borderColor: '#4f46e5',
+        backgroundColor: 'rgba(79,70,229,.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.35,
+        pointRadius: 3,
+        pointBackgroundColor: '#4f46e5'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: c => ` $${Number(c.raw).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: mutedColor, maxRotation: 30 }, grid: { color: 'rgba(128,128,128,.1)' } },
+        y: { ticks: { color: mutedColor, callback: v => '$' + Number(v).toLocaleString() }, grid: { color: 'rgba(128,128,128,.1)' } }
+      }
+    }
+  });
+}
+
 // ─── Add Asset Modal ──────────────────────────────────────────────────────
 function openAddModal(type = 'STOCK', preset = {}) {
   document.getElementById('add-modal').classList.add('open');
@@ -494,7 +697,6 @@ function openAddModal(type = 'STOCK', preset = {}) {
   document.getElementById('add-type').value = type;
   switchAddForm(type);
 
-  // Reset crypto lookup status
   const lookupStatus = document.getElementById('crypto-lookup-status');
   if (lookupStatus) lookupStatus.textContent = '';
 
@@ -502,10 +704,7 @@ function openAddModal(type = 'STOCK', preset = {}) {
     document.getElementById('crypto-symbol').value = preset.symbol || '';
     document.getElementById('crypto-name').value = preset.name || '';
     document.getElementById('crypto-current-price').value = preset.currentPrice != null ? preset.currentPrice : '';
-    // If no name pre-filled but symbol is set, trigger auto-fetch
-    if (preset.symbol && !preset.name) {
-      fetchCryptoInfo();
-    }
+    if (preset.symbol && !preset.name) fetchCryptoInfo();
   }
 }
 
@@ -517,6 +716,38 @@ function switchAddForm(type) {
   ['STOCK', 'BOND', 'CRYPTO'].forEach(formType => {
     document.getElementById(`form-${formType}`).style.display = formType === type ? 'grid' : 'none';
   });
+}
+
+function initStockAutoFill() {
+  const stockSymbolInput = document.getElementById('stock-symbol');
+  if (!stockSymbolInput) return;
+
+  stockSymbolInput.addEventListener('input', () => {
+    const raw = stockSymbolInput.value.trim();
+    if (stockSymbolLookupTimer) clearTimeout(stockSymbolLookupTimer);
+    if (!raw) return;
+    stockSymbolLookupTimer = setTimeout(() => autoFillStockFields(raw.toUpperCase()), 350);
+  });
+}
+
+async function autoFillStockFields(symbol) {
+  const statusEl = document.getElementById('add-status');
+  try {
+    statusEl.innerHTML = '<span style="color:var(--text-muted);">Fetching stock details...</span>';
+    const details = await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}`);
+
+    document.getElementById('stock-symbol').value = details.symbol || symbol;
+    document.getElementById('stock-name').value = details.companyName || '';
+
+    const price = Number(details?.quote?.currentPrice || 0);
+    if (price > 0) document.getElementById('stock-price').value = price.toFixed(2);
+    if (!document.getElementById('stock-date').value) document.getElementById('stock-date').value = new Date().toISOString().slice(0, 10);
+    if (!document.getElementById('stock-quantity').value) document.getElementById('stock-quantity').value = '1';
+
+    statusEl.innerHTML = '<span class="status-success">✅ Stock fields auto-filled from symbol</span>';
+  } catch (e) {
+    statusEl.innerHTML = `<span class="status-error">❌ Could not auto-fill: ${e.message}</span>`;
+  }
 }
 
 async function submitAddAsset() {
@@ -542,11 +773,11 @@ async function submitAddAsset() {
         throw new Error('Please fill all crypto fields');
       }
 
-      await apiFetch('/api/v1/crypto', {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
+      await apiFetch('/api/v1/crypto', { method: 'POST', body: JSON.stringify(payload) });
     } else if (type === 'STOCK') {
+      const symbol = val('stock-symbol').toUpperCase();
+      if (symbol) await autoFillStockFields(symbol);
+
       const payload = {
         type,
         symbol: val('stock-symbol'),
@@ -555,9 +786,11 @@ async function submitAddAsset() {
         purchasePrice: val('stock-price'),
         purchaseDate: val('stock-date') || new Date().toISOString().slice(0, 10)
       };
+
       if (!payload.symbol || !payload.assetName || !payload.quantity || !payload.purchasePrice) {
         throw new Error('Please fill all stock fields');
       }
+
       await apiFetch('/api/v1/portfolio/holdings', { method: 'POST', body: JSON.stringify(payload) });
     } else {
       const payload = {
@@ -568,9 +801,11 @@ async function submitAddAsset() {
         startDate: val('bond-start'),
         tenureMonths: val('bond-tenure')
       };
+
       if (!payload.issuer || !payload.interestRate || !payload.amountInvested || !payload.startDate || !payload.tenureMonths) {
         throw new Error('Please fill all bond fields');
       }
+
       await apiFetch('/api/v1/portfolio/holdings', { method: 'POST', body: JSON.stringify(payload) });
     }
 
@@ -578,12 +813,8 @@ async function submitAddAsset() {
     setTimeout(async () => {
       closeAddModal();
       await refreshDashboardAndHoldings();
-      if (document.getElementById('section-transactions').classList.contains('active')) {
-        await loadTransactions();
-      }
-      if (document.getElementById('section-marketplace').classList.contains('active')) {
-        await loadMarketplace();
-      }
+      if (document.getElementById('section-transactions').classList.contains('active')) await loadTransactions();
+      if (document.getElementById('section-marketplace').classList.contains('active')) await loadMarketplace();
     }, 700);
   } catch (error) {
     statusEl.innerHTML = `<span class="status-error">❌ ${esc(error.message)}</span>`;
@@ -630,12 +861,8 @@ async function confirmSell() {
   try {
     if (pendingSell.type === 'CRYPTO') {
       const quantity = numberValue('sell-quantity');
-      if (quantity == null || quantity <= 0) {
-        throw new Error('Enter a valid sell quantity');
-      }
-      if (Number(quantity) > Number(pendingSell.quantity)) {
-        throw new Error('Sell quantity cannot exceed current holdings');
-      }
+      if (quantity == null || quantity <= 0) throw new Error('Enter a valid sell quantity');
+      if (Number(quantity) > Number(pendingSell.quantity)) throw new Error('Sell quantity cannot exceed current holdings');
 
       await apiFetch('/api/v1/crypto', {
         method: 'POST',
@@ -654,9 +881,7 @@ async function confirmSell() {
     closeSellModal();
     await refreshDashboardAndHoldings();
     await loadTransactions();
-    if (document.getElementById('section-marketplace').classList.contains('active')) {
-      await loadMarketplace();
-    }
+    if (document.getElementById('section-marketplace').classList.contains('active')) await loadMarketplace();
   } catch (error) {
     alert(`Sell failed: ${error.message}`);
   }
@@ -698,28 +923,21 @@ async function refreshCryptoPrice(symbol, silent = false) {
     await apiFetch(`/api/v1/crypto/${encodeURIComponent(symbol)}/price`, { method: 'PUT' });
     if (!silent) {
       await refreshDashboardAndHoldings();
-      if (document.getElementById('section-marketplace').classList.contains('active')) {
-        await loadMarketplace();
-      }
+      if (document.getElementById('section-marketplace').classList.contains('active')) await loadMarketplace();
     }
   } catch (error) {
-    if (!silent) {
-      alert(`Refresh failed: ${error.message}`);
-    }
+    if (!silent) alert(`Refresh failed: ${error.message}`);
   }
 }
 
 async function deleteCryptoHolding(cryptoId, name) {
-  const confirmed = window.confirm(`Delete ${name}? This removes the crypto row from the backend.`);
-  if (!confirmed) return;
+  if (!window.confirm(`Delete ${name}? This removes the crypto row from the backend.`)) return;
 
   try {
     await apiFetch(`/api/v1/crypto/${cryptoId}`, { method: 'DELETE' });
     await refreshDashboardAndHoldings();
     await loadTransactions();
-    if (document.getElementById('section-marketplace').classList.contains('active')) {
-      await loadMarketplace();
-    }
+    if (document.getElementById('section-marketplace').classList.contains('active')) await loadMarketplace();
   } catch (error) {
     alert(`Delete failed: ${error.message}`);
   }
@@ -747,11 +965,7 @@ async function fetchCryptoInfo() {
 
   try {
     const data = await apiFetch(`/api/v1/crypto/lookup/${encodeURIComponent(symbol)}`);
-    // Fill in name only if empty (don't override what user typed)
-    if (data.name && !nameInput.value.trim()) {
-      nameInput.value = data.name;
-    }
-    // Always fill in current price from live feed
+    if (data.name && !nameInput.value.trim()) nameInput.value = data.name;
     if (data.currentPrice && Number(data.currentPrice) > 0) {
       priceInput.value = Number(data.currentPrice).toFixed(2);
       if (statusEl) statusEl.innerHTML = `<span style="color:var(--success);">✅ ${esc(data.name)} — $${Number(data.currentPrice).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>`;
@@ -776,9 +990,7 @@ async function apiFetch(url, options = {}) {
     throw new Error(errorBody.message || `HTTP ${response.status}`);
   }
 
-  if (response.status === 204) {
-    return {};
-  }
+  if (response.status === 204) return {};
 
   return response.json();
 }
@@ -807,12 +1019,8 @@ function activeCryptoHoldings(rows) {
 }
 
 async function refreshDashboardAndHoldings() {
-  if (document.getElementById('section-dashboard').classList.contains('active')) {
-    await loadDashboard();
-  }
-  if (document.getElementById('section-holdings').classList.contains('active')) {
-    await loadHoldings(document.getElementById('holdings-filter').value);
-  }
+  if (document.getElementById('section-dashboard').classList.contains('active')) await loadDashboard();
+  if (document.getElementById('section-holdings').classList.contains('active')) await loadHoldings(document.getElementById('holdings-filter').value);
 }
 
 function safeArray(value) {
