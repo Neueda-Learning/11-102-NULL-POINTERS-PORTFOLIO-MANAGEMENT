@@ -109,6 +109,7 @@
           <label for="marketplace-filter">Category:</label>
           <select id="marketplace-filter" onchange="loadMarketplace()">
             <option value="STOCK">Stocks</option>
+            <option value="BOND">Bonds</option>
             <option value="CRYPTO">Crypto</option>
           </select>
         </div>
@@ -139,10 +140,83 @@
     <!-- ── SETTINGS ─────────────────────────────────────────────────────── -->
     <section id="section-settings" class="section">
       <div class="section-header"><h2>Settings</h2></div>
-      <div class="card" style="max-width:400px;">
-        <h3 style="margin-top:0;">Theme</h3>
-        <p style="color:var(--text-muted);">Toggle between light and dark mode.</p>
-        <button class="btn btn-secondary" onclick="toggleTheme()">🌙 Toggle Theme</button>
+      <div class="settings-layout">
+        <div class="card settings-card profile-card">
+          <div class="settings-card-head">
+            <h3>Profile</h3>
+            <span class="settings-chip">Demo</span>
+          </div>
+          <p class="settings-card-sub">Manage your public profile details and visibility.</p>
+          <div class="profile-inline">
+            <div class="profile-avatar">PM</div>
+            <div>
+              <div class="profile-name">Portfolio Manager</div>
+              <div class="profile-email">manager@portfolio.local</div>
+            </div>
+          </div>
+          <div class="settings-actions">
+            <button class="btn btn-primary" onclick="onSettingsAction('addProfile')">Add Profile</button>
+            <button class="btn btn-secondary" onclick="onSettingsAction('editProfile')">Edit Profile</button>
+            <button class="btn btn-secondary" onclick="onSettingsAction('showProfile')">Show Profile</button>
+          </div>
+        </div>
+
+        <div class="card settings-card">
+          <div class="settings-card-head">
+            <h3>Preferences</h3>
+          </div>
+          <p class="settings-card-sub">Personalize locale and dashboard behavior.</p>
+          <div class="settings-form-grid">
+            <div class="form-group">
+              <label for="settings-currency">Default Currency</label>
+              <select id="settings-currency">
+                <option>USD</option>
+                <option>EUR</option>
+                <option>INR</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="settings-language">Language</label>
+              <select id="settings-language">
+                <option>English</option>
+                <option>Spanish</option>
+                <option>Hindi</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-actions">
+            <button class="btn btn-secondary" onclick="onSettingsAction('savePreferences')">Save Preferences</button>
+          </div>
+        </div>
+
+        <div class="card settings-card">
+          <div class="settings-card-head">
+            <h3>Security</h3>
+          </div>
+          <p class="settings-card-sub">Review account security and sessions.</p>
+          <div class="settings-actions">
+            <button class="btn btn-secondary" onclick="onSettingsAction('changePassword')">Change Password</button>
+            <button class="btn btn-secondary" onclick="onSettingsAction('enable2fa')">Enable 2FA</button>
+            <button class="btn btn-secondary" onclick="onSettingsAction('sessionLog')">View Session Log</button>
+          </div>
+        </div>
+
+        <div class="card settings-card">
+          <div class="settings-card-head">
+            <h3>Account Tools</h3>
+          </div>
+          <p class="settings-card-sub">Quick actions for backup and account lifecycle.</p>
+          <div class="settings-actions">
+            <button class="btn btn-secondary" onclick="onSettingsAction('exportData')">Export Data</button>
+            <button class="btn btn-secondary" onclick="onSettingsAction('downloadReport')">Download Report</button>
+            <button class="btn btn-danger" onclick="onSettingsAction('deactivate')">Deactivate Account</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card settings-status-card">
+        <div id="settings-status" class="status-msg">Select an action above to see demo responses.</div>
+        <div id="settings-profile-preview" class="settings-profile-preview"></div>
       </div>
     </section>
 

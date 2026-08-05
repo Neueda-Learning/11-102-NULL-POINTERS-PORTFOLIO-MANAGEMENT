@@ -20,20 +20,24 @@ public class PortfolioService {
 
     // ─── Summary ────────────────────────────────────────────────────────────
     public Map<String, Object> getSummary() {
-        BigDecimal bondsValue = orZero(jdbcTemplate.queryForObject(
+        BigDecimal bondsInvested = orZero(jdbcTemplate.queryForObject(
                 "SELECT COALESCE(SUM(amount_invested),0) FROM bonds", BigDecimal.class));
+        BigDecimal bondsValue = orZero(jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(amount_invested + (amount_invested * interest_rate * tenure_months / 1200)),0) FROM bonds", BigDecimal.class));
+
+        BigDecimal stocksInvested = orZero(jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(quantity*purchase_price),0) FROM stock", BigDecimal.class));
         BigDecimal stocksValue = orZero(jdbcTemplate.queryForObject(
                 "SELECT COALESCE(SUM(quantity*purchase_price),0) FROM stock", BigDecimal.class));
+
+        BigDecimal cryptoInvested = orZero(jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(invested_amount),0) FROM crypto", BigDecimal.class));
         BigDecimal cryptoValue = orZero(jdbcTemplate.queryForObject(
                 "SELECT COALESCE(SUM(current_value),0) FROM crypto", BigDecimal.class));
 
-        BigDecimal buyTotal = orZero(jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(transaction_price*quantity),0) FROM transaction_history WHERE transaction_type='BUY'", BigDecimal.class));
-        BigDecimal sellTotal = orZero(jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(transaction_price*quantity),0) FROM transaction_history WHERE transaction_type='SELL'", BigDecimal.class));
-
         BigDecimal totalPortfolioValue = bondsValue.add(stocksValue).add(cryptoValue);
-        BigDecimal netInvested = buyTotal.subtract(sellTotal);
+        // Cost basis for currently open holdings only; avoids stale transaction effects.
+        BigDecimal netInvested = bondsInvested.add(stocksInvested).add(cryptoInvested);
         BigDecimal totalReturns = totalPortfolioValue.subtract(netInvested);
         BigDecimal totalReturnsPercent = netInvested.compareTo(BigDecimal.ZERO) > 0
                 ? totalReturns.divide(netInvested, 6, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
@@ -117,16 +121,36 @@ public class PortfolioService {
 
     private List<Map<String, Object>> bondHoldings() {
         return jdbcTemplate.queryForList("""
-                SELECT a.asset_id, a.symbol, a.asset_name,
-                       b.issuer, b.interest_rate, b.amount_invested,
-                       b.start_date, b.tenure_months, b.maturity_date,
-                       (b.amount_invested + (b.amount_invested * b.interest_rate * b.tenure_months / 1200)) AS total_value,
-                       (b.amount_invested * b.interest_rate * b.tenure_months / 1200) AS profit_loss,
-                       'BOND' AS asset_type
-                FROM asset a
-                JOIN bonds b ON a.asset_id = b.asset_id
-                WHERE a.asset_type = 'BOND'
-                """);
+            SELECT a.asset_id, 
+                   a.symbol, 
+                   a.asset_name,
+                   b.issuer, 
+                   b.interest_rate, 
+                   b.amount_invested,
+                   b.start_date, 
+                   b.tenure_months, 
+                   b.maturity_date,
+                   
+                   -- 1. Calculate accrued interest based on days passed since start_date
+                   (
+                     b.amount_invested * (b.interest_rate / 100) * 
+                     (LEAST(DATEDIFF(CURDATE(), b.start_date), DATEDIFF(b.maturity_date, b.start_date)) / 365.0)
+                   ) AS profit_loss,
+                   
+                   -- 2. Total Value = Principal + Accrued Interest
+                   (
+                     b.amount_invested + 
+                     (
+                       b.amount_invested * (b.interest_rate / 100) * 
+                       (LEAST(DATEDIFF(CURDATE(), b.start_date), DATEDIFF(b.maturity_date, b.start_date)) / 365.0)
+                     )
+                   ) AS total_value,
+                   
+                   'BOND' AS asset_type
+            FROM asset a
+            JOIN bonds b ON a.asset_id = b.asset_id
+            WHERE a.asset_type = 'BOND'
+            """);
     }
 
     private List<Map<String, Object>> cryptoHoldings() {

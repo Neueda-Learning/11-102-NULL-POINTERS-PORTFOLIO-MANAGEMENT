@@ -471,9 +471,94 @@ input, select { font-family: inherit; font-size: 0.9rem; }
 }
 .detail-btn:hover { border-color: var(--primary); color: var(--primary); }
 
+/* ── Settings ──────────────────────────────────────────────────────────── */
+.settings-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.settings-card {
+  min-height: 210px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+.settings-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.settings-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+.settings-chip {
+  font-size: .72rem;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 600;
+}
+.settings-card-sub {
+  color: var(--text-muted);
+  font-size: .88rem;
+  margin-bottom: 14px;
+}
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: auto;
+}
+.settings-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.profile-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.profile-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), #7c3aed);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+.profile-name {
+  font-size: .95rem;
+  font-weight: 700;
+}
+.profile-email {
+  font-size: .82rem;
+  color: var(--text-muted);
+}
+.settings-status-card {
+  border-style: dashed;
+}
+.settings-profile-preview {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: .88rem;
+  min-height: 20px;
+}
+
 /* ── Responsive ────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .charts-grid { grid-template-columns: 1fr; }
+  .settings-form-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 700px) {
   .sidebar { width: 60px; }

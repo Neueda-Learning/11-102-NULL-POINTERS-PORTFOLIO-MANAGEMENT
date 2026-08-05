@@ -15,6 +15,17 @@ const marketplaceState = {
   totalPages: 1
 };
 
+const DUMMY_BOND_MARKET = [
+  { issuer: 'HDFC Bank', bondType: 'Corporate Bond', interestRate: 7.25, tenureMonths: 12, minInvestment: 1000 },
+  { issuer: 'ICICI Bank', bondType: 'Bank Bond', interestRate: 7.1, tenureMonths: 24, minInvestment: 2000 },
+  { issuer: 'State Bank of India', bondType: 'Bank Bond', interestRate: 6.9, tenureMonths: 36, minInvestment: 1500 },
+  { issuer: 'Reliance Industries', bondType: 'Corporate Bond', interestRate: 7.6, tenureMonths: 24, minInvestment: 2500 },
+  { issuer: 'Tata Capital', bondType: 'Corporate Bond', interestRate: 7.45, tenureMonths: 18, minInvestment: 1200 },
+  { issuer: 'Axis Bank', bondType: 'Bank Bond', interestRate: 7.05, tenureMonths: 12, minInvestment: 1000 },
+  { issuer: 'Kotak Mahindra Bank', bondType: 'Bank Bond', interestRate: 7.15, tenureMonths: 30, minInvestment: 3000 },
+  { issuer: 'Bajaj Finance', bondType: 'Corporate Bond', interestRate: 7.8, tenureMonths: 24, minInvestment: 2000 }
+];
+
 // ─── Init ─────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
@@ -209,15 +220,14 @@ function buildStocksTable(rows) {
 function buildBondsTable(rows) {
   const head = `<tr>
     <th>Issuer</th><th>Coupon Rate</th><th>Maturity</th>
-    <th>Qty</th><th>Face Value</th><th>Total Value</th>
+    <th>Face Value</th><th>Total Value</th>
     <th>P/L</th><th>Action</th></tr>`;
   const body = rows.map(r => {
     const pl = Number(r.profit_loss || 0);
     return `<tr>
       <td><strong>${esc(r.issuer || r.asset_name)}</strong></td>
       <td>${num(r.interest_rate)}%</td>
-      <td>${esc(r.maturity_date)}</td>
-      <td>1</td>
+      <td>${fmtDateOnly(r.maturity_date)}</td>
       <td>${fmt(r.amount_invested)}</td>
       <td>${fmt(r.total_value)}</td>
       <td class="${pl>=0?'pos':'neg'}">${pl>=0?'+':''}${fmt(pl)}</td>
@@ -274,6 +284,13 @@ async function loadMarketplace() {
       return;
     }
 
+    if (marketplaceState.category === 'BOND') {
+      pagerRow.style.display = 'none';
+      container.innerHTML = buildMarketplaceBondsTable(DUMMY_BOND_MARKET);
+      statusEl.innerHTML = `<span class="status-success">✅ ${DUMMY_BOND_MARKET.length} bond(s) loaded</span>`;
+      return;
+    }
+
     pagerRow.style.display = 'none';
     const cryptos = await apiFetch('/api/v1/crypto');
     container.innerHTML = buildMarketplaceCryptoTable(cryptos || []);
@@ -318,7 +335,7 @@ function buildMarketplaceStocksTable(rows) {
       <td>${esc(r.exchange)}</td>
       <td>${fmt(r.currentPrice)}</td>
       <td class="${Number(r.dailyChangePercent || 0) >= 0 ? 'pos' : 'neg'}">${Number(r.dailyChangePercent || 0).toFixed(2)}%</td>
-      <td><button class="btn btn-primary btn-sm" onclick="buyFromMarketplace('${esc(r.symbol)}', '${esc(r.companyName)}')">Buy</button></td>
+      <td><button class="btn btn-primary btn-sm" onclick="buyFromMarketplace('${esc(r.symbol)}', '${esc(r.companyName)}', ${Number(r.currentPrice || 0)})">Buy</button></td>
       <td><button class="detail-btn" onclick="showStockPerformance('${esc(r.symbol)}')">View Performance</button></td>
     </tr>`
   ).join('');
@@ -345,29 +362,65 @@ function buildMarketplaceCryptoTable(rows) {
   return `<table class="data-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 
-async function buyFromMarketplace(symbol, companyName) {
-  const qtyInput = prompt(`Enter quantity to buy for ${companyName} (${symbol})`, '1');
-  if (qtyInput === null) {
-    return;
-  }
-  const quantity = Number(qtyInput);
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    alert('Please enter a valid quantity greater than 0.');
-    return;
+function buildMarketplaceBondsTable(rows) {
+  if (!rows.length) {
+    return emptyState('No bonds available right now.');
   }
 
-  try {
-    await apiFetch(`/api/portfolios/${DEFAULT_PORTFOLIO_ID}/stocks/buy`, {
-      method: 'POST',
-      body: JSON.stringify({ symbol, quantity })
-    });
-    alert(`Bought ${quantity} share(s) of ${symbol}`);
-    if (document.getElementById('section-holdings').classList.contains('active')) {
-      loadHoldings(document.getElementById('holdings-filter').value);
-    }
-  } catch (e) {
-    alert(`Buy failed: ${e.message}`);
+  const head = `<tr>
+    <th>Issuer</th><th>Bond Type</th><th>Coupon Rate</th>
+    <th>Tenure (Months)</th><th>Min Investment</th><th>Buy Bond</th></tr>`;
+
+  const body = rows.map((r, idx) => `
+    <tr>
+      <td><strong>${esc(r.issuer)}</strong></td>
+      <td>${esc(r.bondType)}</td>
+      <td>${num(r.interestRate, 2)}%</td>
+      <td>${esc(r.tenureMonths)}</td>
+      <td>${fmt(r.minInvestment)}</td>
+      <td><button class="btn btn-primary btn-sm" onclick="buyBondFromMarketplaceByIndex(${idx})">Buy Bond</button></td>
+    </tr>`
+  ).join('');
+
+  return `<table class="data-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+
+function buyBondFromMarketplaceByIndex(index) {
+  const bond = DUMMY_BOND_MARKET[index];
+  if (!bond) return;
+  buyBondFromMarketplace(bond.issuer, bond.interestRate, bond.tenureMonths, bond.minInvestment);
+}
+
+function buyBondFromMarketplace(issuer, interestRate, tenureMonths, minInvestment) {
+  openAddModal();
+  document.getElementById('add-type').value = 'BOND';
+  switchAddForm('BOND');
+
+  document.getElementById('bond-issuer').value = issuer;
+  document.getElementById('bond-rate').value = Number(interestRate).toFixed(2);
+  document.getElementById('bond-tenure').value = String(tenureMonths);
+  document.getElementById('bond-amount').value = Number(minInvestment).toFixed(2);
+  if (!document.getElementById('bond-start').value) {
+    document.getElementById('bond-start').value = new Date().toISOString().slice(0, 10);
   }
+
+  const statusEl = document.getElementById('add-status');
+  statusEl.innerHTML = `<span class="status-success">✅ Bond form prefilled for ${esc(issuer)}. Click Add Asset to buy.</span>`;
+}
+
+function buyFromMarketplace(symbol, companyName, currentPrice) {
+  openAddModal();
+  document.getElementById('add-type').value = 'STOCK';
+  switchAddForm('STOCK');
+
+  document.getElementById('stock-symbol').value = symbol || '';
+  document.getElementById('stock-name').value = companyName || '';
+  document.getElementById('stock-price').value = Number(currentPrice || 0) > 0 ? Number(currentPrice).toFixed(2) : '';
+  document.getElementById('stock-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('stock-quantity').value = '';
+
+  const statusEl = document.getElementById('add-status');
+  statusEl.innerHTML = `<span class="status-success">✅ Stock details prefilled for ${esc(symbol)}. Enter quantity and click Add Asset.</span>`;
 }
 
 // ─── Transactions ──────────────────────────────────────────────────────────
@@ -572,9 +625,6 @@ async function autoFillStockFields(symbol) {
       document.getElementById('stock-date').value = new Date().toISOString().slice(0, 10);
     }
 
-    if (!document.getElementById('stock-quantity').value) {
-      document.getElementById('stock-quantity').value = '1';
-    }
 
     statusEl.innerHTML = '<span class="status-success">✅ Stock fields auto-filled from symbol</span>';
   } catch (e) {
@@ -658,6 +708,42 @@ async function confirmSell() {
   }
 }
 
+// ─── Settings (Demo actions) ───────────────────────────────────────────────
+function onSettingsAction(action) {
+  const statusEl = document.getElementById('settings-status');
+  const previewEl = document.getElementById('settings-profile-preview');
+  if (!statusEl || !previewEl) return;
+
+  const messages = {
+    addProfile: 'Demo: New profile form opened.',
+    editProfile: 'Demo: Profile edit mode enabled.',
+    showProfile: 'Demo: Showing profile snapshot below.',
+    savePreferences: 'Demo: Preferences saved successfully.',
+    changePassword: 'Demo: Password reset workflow started.',
+    enable2fa: 'Demo: Two-factor authentication setup started.',
+    sessionLog: 'Demo: Recent sessions loaded.',
+    exportData: 'Demo: Data export queued.',
+    downloadReport: 'Demo: Monthly report generated.',
+    deactivate: 'Demo: Account deactivation requires confirmation.'
+  };
+
+  const isWarn = action === 'deactivate';
+  statusEl.className = isWarn ? 'status-error' : 'status-success';
+  statusEl.textContent = `${isWarn ? '⚠️' : '✅'} ${messages[action] || 'Action completed.'}`;
+
+  if (action === 'showProfile') {
+    previewEl.innerHTML = [
+      '<strong>Profile Preview</strong>',
+      'Name: Portfolio Manager',
+      'Email: manager@portfolio.local',
+      `Preferred Currency: ${esc(document.getElementById('settings-currency')?.value || 'USD')}`,
+      `Language: ${esc(document.getElementById('settings-language')?.value || 'English')}`
+    ].join('<br>');
+  } else if (action === 'savePreferences') {
+    previewEl.innerHTML = `Saved preferences: ${esc(document.getElementById('settings-currency')?.value || 'USD')} / ${esc(document.getElementById('settings-language')?.value || 'English')}.`;
+  }
+}
+
 // ─── API Helper ───────────────────────────────────────────────────────────
 async function apiFetch(url, opts = {}) {
   const res = await fetch(url, {
@@ -689,6 +775,17 @@ function num(v, dec = 4) {
 function fmtDate(v) {
   if (!v) return '—';
   return new Date(v).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+}
+function fmtDateOnly(v) {
+  if (!v) return '—';
+  const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '—';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
 }
 function val(id) { return document.getElementById(id)?.value?.trim() || ''; }
 function emptyState(msg) {
