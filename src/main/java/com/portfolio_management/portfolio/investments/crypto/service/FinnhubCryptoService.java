@@ -1,6 +1,7 @@
 package com.portfolio_management.portfolio.investments.crypto.service;
 
 import com.portfolio_management.portfolio.investments.crypto.client.FinnhubClient;
+import com.portfolio_management.portfolio.investments.crypto.Entity.Asset;
 import com.portfolio_management.portfolio.investments.crypto.dto.CryptoRequestDTO;
 import com.portfolio_management.portfolio.investments.crypto.dto.CryptoPriceResponseDTO;
 import com.portfolio_management.portfolio.investments.crypto.dto.CryptoResponseDTO;
@@ -9,6 +10,7 @@ import com.portfolio_management.portfolio.investments.crypto.Entity.CryptoHoldin
 import com.portfolio_management.portfolio.investments.crypto.Entity.Transaction;
 import com.portfolio_management.portfolio.investments.crypto.Entity.Portfolio;
 import com.portfolio_management.portfolio.investments.crypto.exception.CryptoNotFoundException;
+import com.portfolio_management.portfolio.investments.crypto.repository.AssetRepository;
 import com.portfolio_management.portfolio.investments.crypto.repository.CryptoHoldingsRepository;
 import com.portfolio_management.portfolio.investments.crypto.repository.CryptoRepository;
 import com.portfolio_management.portfolio.investments.crypto.repository.PortfolioRepository;
@@ -31,6 +33,7 @@ import java.util.stream.Collectors;
 public class FinnhubCryptoService implements CryptoService {
 
     private final CryptoRepository cryptoRepository;
+    private final AssetRepository assetRepository;
     private final CryptoHoldingsRepository cryptoHoldingsRepository;
     private final TransactionRepository transactionRepository;
     private final PortfolioRepository portfolioRepository;
@@ -38,12 +41,14 @@ public class FinnhubCryptoService implements CryptoService {
 
     public FinnhubCryptoService(
             CryptoRepository cryptoRepository,
+            AssetRepository assetRepository,
             CryptoHoldingsRepository cryptoHoldingsRepository,
             TransactionRepository transactionRepository,
             PortfolioRepository portfolioRepository,
             FinnhubClient finnhubClient
     ) {
         this.cryptoRepository = cryptoRepository;
+        this.assetRepository = assetRepository;
         this.cryptoHoldingsRepository = cryptoHoldingsRepository;
         this.transactionRepository = transactionRepository;
         this.portfolioRepository = portfolioRepository;
@@ -72,7 +77,8 @@ public class FinnhubCryptoService implements CryptoService {
     @Override
     public Optional<CryptoResponseDTO> getCryptoBySymbol(String symbol) {
         log.info("Fetching cryptocurrency with symbol: {}", symbol);
-        return cryptoRepository.findBySymbol(symbol.toUpperCase())
+        return assetRepository.findBySymbol(symbol.toUpperCase())
+                .flatMap(asset -> cryptoRepository.findByAssetId(asset.getAssetId()))
                 .map(crypto -> refreshPriceAndMetrics(crypto, false))
                 .map(this::convertToDTO);
     }
@@ -84,11 +90,11 @@ public class FinnhubCryptoService implements CryptoService {
         validateTradeRequest(cryptoRequestDTO);
 
         String normalizedSymbol = cryptoRequestDTO.getSymbol().toUpperCase();
-        Optional<Crypto> existingCrypto = cryptoRepository.findBySymbol(normalizedSymbol);
+        Asset asset = resolveOrCreateAsset(normalizedSymbol, cryptoRequestDTO.getName());
+        Optional<Crypto> existingCrypto = cryptoRepository.findByAssetId(asset.getAssetId());
 
         Crypto crypto = existingCrypto.orElseGet(Crypto::new);
-        crypto.setSymbol(normalizedSymbol);
-        crypto.setName(resolveCryptoName(crypto, cryptoRequestDTO));
+        crypto.setAssetId(asset.getAssetId());
         if (crypto.getQuantity() == null) {
             crypto.setQuantity(BigDecimal.ZERO);
         }
@@ -124,8 +130,13 @@ public class FinnhubCryptoService implements CryptoService {
             // Fetch real-time price from Finnhub API
             CryptoPriceResponseDTO priceData = finnhubClient.getCryptoQuote(normalizedSymbol);
             
+            Asset asset = assetRepository.findBySymbol(normalizedSymbol)
+                    .orElseGet(() -> assetRepository.save(new Asset(null, normalizedSymbol,
+                            priceData != null && priceData.getDisplayName() != null ? priceData.getDisplayName() : normalizedSymbol,
+                            "CRYPTO", null)));
+
             // Find existing crypto or create new one
-            Optional<Crypto> existingCrypto = cryptoRepository.findBySymbol(normalizedSymbol);
+            Optional<Crypto> existingCrypto = cryptoRepository.findByAssetId(asset.getAssetId());
             
             Crypto crypto;
             if (existingCrypto.isPresent()) {
@@ -133,8 +144,7 @@ public class FinnhubCryptoService implements CryptoService {
                 log.info("Updating existing cryptocurrency: {}", normalizedSymbol);
             } else {
                 crypto = new Crypto();
-                crypto.setSymbol(normalizedSymbol);
-                crypto.setName(priceData.getDisplayName() != null ? priceData.getDisplayName() : normalizedSymbol);
+                crypto.setAssetId(asset.getAssetId());
                 crypto.setQuantity(java.math.BigDecimal.ZERO);
                 crypto.setBuyPrice(java.math.BigDecimal.ZERO);
                 log.info("Creating new cryptocurrency entry: {}", normalizedSymbol);
@@ -161,20 +171,31 @@ public class FinnhubCryptoService implements CryptoService {
     public List<CryptoResponseDTO> getCryptosBySymbols(List<String> symbols) {
         log.info("Fetching {} cryptocurrencies by symbols", symbols.size());
         return symbols.stream()
-                .flatMap(symbol -> cryptoRepository.findBySymbol(symbol.toUpperCase()).stream())
+                .flatMap(symbol -> assetRepository.findBySymbol(symbol.toUpperCase())
+                        .flatMap(asset -> cryptoRepository.findByAssetId(asset.getAssetId()))
+                        .stream())
                 .map(crypto -> refreshPriceAndMetrics(crypto, false))
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
 
     private Crypto refreshPriceAndMetrics(Crypto crypto, boolean failIfPriceUnavailable) {
+        String symbol = resolveAssetSymbol(crypto.getAssetId());
+        if ("UNKNOWN".equals(symbol)) {
+            if (failIfPriceUnavailable) {
+                throw new RuntimeException("Cannot refresh price because asset symbol is unknown for crypto id: " + crypto.getCryptoId());
+            }
+            log.warn("Skipping Finnhub refresh because asset symbol is unknown for crypto id: {}", crypto.getCryptoId());
+            recalculateHoldingMetrics(crypto);
+            return crypto.getCryptoId() != null ? cryptoRepository.save(crypto) : crypto;
+        }
         try {
-            CryptoPriceResponseDTO priceData = finnhubClient.getCryptoQuote(crypto.getSymbol());
+            CryptoPriceResponseDTO priceData = finnhubClient.getCryptoQuote(symbol);
             if (priceData == null || priceData.getCurrentPrice() == null) {
                 if (failIfPriceUnavailable) {
-                    throw new RuntimeException("Finnhub returned empty current price for symbol: " + crypto.getSymbol());
+                    throw new RuntimeException("Finnhub returned empty current price for symbol: " + symbol);
                 }
-                log.warn("Using stored current price for {} because Finnhub returned no price", crypto.getSymbol());
+                log.warn("Using stored current price for {} because Finnhub returned no price", symbol);
             } else {
                 crypto.setCurrentPrice(priceData.getCurrentPrice());
             }
@@ -182,7 +203,7 @@ public class FinnhubCryptoService implements CryptoService {
             if (failIfPriceUnavailable) {
                 throw ex;
             }
-            log.warn("Using stored current price for {} due to Finnhub fetch failure: {}", crypto.getSymbol(), ex.getMessage());
+            log.warn("Using stored current price for {} due to Finnhub fetch failure: {}", symbol, ex.getMessage());
         }
 
         recalculateHoldingMetrics(crypto);
@@ -240,7 +261,7 @@ public class FinnhubCryptoService implements CryptoService {
                 ? existingQuantity.subtract(safeQuantity)
                 : existingQuantity.add(safeQuantity);
         if (updatedQuantity.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("Sell quantity exceeds current holding for symbol: " + savedCrypto.getSymbol());
+            throw new IllegalArgumentException("Sell quantity exceeds current holding for symbol: " + resolveAssetSymbol(savedCrypto.getAssetId()));
         }
 
         if ("BUY".equals(txType)) {
@@ -277,7 +298,7 @@ public class FinnhubCryptoService implements CryptoService {
 
         Transaction transaction = new Transaction();
         transaction.setPortfolioId(portfolioId);
-        transaction.setCryptoId(savedCrypto.getCryptoId());
+        transaction.setAssetId(savedCrypto.getAssetId());
         transaction.setTransactionType(txType);
         transaction.setQuantity(txQuantity);
         transaction.setTransactionPrice(savedCrypto.getCurrentPrice());
@@ -309,16 +330,6 @@ public class FinnhubCryptoService implements CryptoService {
         }
     }
 
-    private String resolveCryptoName(Crypto crypto, CryptoRequestDTO request) {
-        if (request.getName() != null && !request.getName().isBlank()) {
-            return request.getName().trim();
-        }
-        if (crypto.getName() != null && !crypto.getName().isBlank()) {
-            return crypto.getName();
-        }
-        return request.getSymbol().toUpperCase();
-    }
-
     private Crypto recalculateCryptoFromHoldings(Crypto crypto) {
         List<CryptoHolding> holdings = cryptoHoldingsRepository.findByCryptoId(crypto.getCryptoId());
 
@@ -341,14 +352,54 @@ public class FinnhubCryptoService implements CryptoService {
         return cryptoRepository.save(crypto);
     }
 
+    private Asset resolveOrCreateAsset(String symbol, String requestedName) {
+        String normalizedSymbol = symbol.toUpperCase();
+        String normalizedName = requestedName != null && !requestedName.isBlank()
+                ? requestedName.trim()
+                : normalizedSymbol;
+
+        Asset asset = assetRepository.findBySymbol(normalizedSymbol)
+                .orElseGet(() -> assetRepository.save(new Asset(null, normalizedSymbol, normalizedName, "CRYPTO", LocalDateTime.now())));
+
+        if (!normalizedName.equals(asset.getName())) {
+            asset.setName(normalizedName);
+            asset = assetRepository.save(asset);
+        }
+
+        if (asset.getAssetType() == null || asset.getAssetType().isBlank()) {
+            asset.setAssetType("CRYPTO");
+            asset = assetRepository.save(asset);
+        }
+
+        return asset;
+    }
+
+    private String resolveAssetSymbol(Long assetId) {
+        if (assetId == null) {
+            return "UNKNOWN";
+        }
+        return assetRepository.findById(assetId)
+                .map(Asset::getSymbol)
+                .orElse("UNKNOWN");
+    }
+
+    private Asset resolveAsset(Long assetId) {
+        if (assetId == null) {
+            return new Asset(null, "UNKNOWN", "UNKNOWN", "UNKNOWN", null);
+        }
+        return assetRepository.findById(assetId)
+                .orElse(new Asset(assetId, "UNKNOWN", "UNKNOWN", "UNKNOWN", null));
+    }
+
     /**
      * Convert Crypto entity to CryptoResponseDTO
      */
     private CryptoResponseDTO convertToDTO(Crypto crypto) {
+        Asset asset = resolveAsset(crypto.getAssetId());
         return new CryptoResponseDTO(
                 crypto.getCryptoId(),
-                crypto.getSymbol(),
-                crypto.getName(),
+                asset.getSymbol(),
+                asset.getName(),
                 crypto.getQuantity(),
                 crypto.getBuyPrice(),
                 crypto.getCurrentPrice(),

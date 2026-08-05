@@ -19,11 +19,8 @@ public class Crypto {
     @Column("crypto_id")
     private Long cryptoId;
 
-    @Column("symbol")
-    private String symbol;
-
-    @Column("name")
-    private String name;
+    @Column("asset_id")
+    private Long assetId;
 
     @Column("quantity")
     private BigDecimal quantity;

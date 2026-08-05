@@ -18,18 +18,18 @@ public interface TransactionRepository extends CrudRepository<Transaction, Long>
     List<Transaction> findByPortfolioId(@Param("portfolioId") Long portfolioId);
 
     /**
-     * Find all transactions for a specific cryptocurrency
+     * Find all transactions for a specific asset
      */
-    @Query("SELECT * FROM transaction_history WHERE crypto_id = :cryptoId ORDER BY transaction_date DESC")
-    List<Transaction> findByCryptoId(@Param("cryptoId") Long cryptoId);
+    @Query("SELECT * FROM transaction_history WHERE asset_id = :assetId ORDER BY transaction_date DESC")
+    List<Transaction> findByAssetId(@Param("assetId") Long assetId);
 
     /**
-     * Find all transactions for a portfolio and cryptocurrency
+     * Find all transactions for a portfolio and asset
      */
-    @Query("SELECT * FROM transaction_history WHERE portfolio_id = :portfolioId AND crypto_id = :cryptoId ORDER BY transaction_date DESC")
-    List<Transaction> findByPortfolioIdAndCryptoId(
+    @Query("SELECT * FROM transaction_history WHERE portfolio_id = :portfolioId AND asset_id = :assetId ORDER BY transaction_date DESC")
+    List<Transaction> findByPortfolioIdAndAssetId(
             @Param("portfolioId") Long portfolioId,
-            @Param("cryptoId") Long cryptoId
+            @Param("assetId") Long assetId
     );
 
     /**

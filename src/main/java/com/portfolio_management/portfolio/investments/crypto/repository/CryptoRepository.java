@@ -11,17 +11,8 @@ import java.util.Optional;
 @Repository
 public interface CryptoRepository extends CrudRepository<Crypto, Long> {
 
-    /**
-     * Find a cryptocurrency by its symbol
-     */
-    @Query("SELECT * FROM crypto WHERE symbol = :symbol")
-    Optional<Crypto> findBySymbol(@Param("symbol") String symbol);
-
-    /**
-     * Find a cryptocurrency by its name
-     */
-    @Query("SELECT * FROM crypto WHERE name = :name")
-    Optional<Crypto> findByName(@Param("name") String name);
+    @Query("SELECT * FROM crypto WHERE asset_id = :assetId")
+    Optional<Crypto> findByAssetId(@Param("assetId") Long assetId);
 
     /**
      * Get all cryptocurrencies ordered by current value descending

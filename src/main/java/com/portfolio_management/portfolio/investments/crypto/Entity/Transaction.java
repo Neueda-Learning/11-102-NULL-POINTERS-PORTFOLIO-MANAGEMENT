@@ -23,8 +23,9 @@ public class Transaction {
     @Column("portfolio_id")
     private Long portfolioId;
 
-    @Column("crypto_id")
-    private Long cryptoId;
+    @Column("asset_id")
+    private Long assetId;
+
 
     @Column("transaction_type")
     private String transactionType;

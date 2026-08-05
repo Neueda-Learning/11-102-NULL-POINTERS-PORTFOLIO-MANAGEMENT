@@ -1,8 +1,10 @@
 package com.portfolio_management.portfolio.investments.crypto.controllers;
 
+import com.portfolio_management.portfolio.investments.crypto.Entity.Asset;
 import com.portfolio_management.portfolio.investments.crypto.Entity.Crypto;
 import com.portfolio_management.portfolio.investments.crypto.Entity.Transaction;
 import com.portfolio_management.portfolio.investments.crypto.dto.TransactionHistoryDTO;
+import com.portfolio_management.portfolio.investments.crypto.repository.AssetRepository;
 import com.portfolio_management.portfolio.investments.crypto.repository.CryptoRepository;
 import com.portfolio_management.portfolio.investments.crypto.repository.TransactionRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -24,31 +26,33 @@ import java.util.List;
 public class TransactionController {
 
     private final TransactionRepository transactionRepository;
+    private final AssetRepository assetRepository;
     private final CryptoRepository cryptoRepository;
 
-    public TransactionController(TransactionRepository transactionRepository, CryptoRepository cryptoRepository) {
+    public TransactionController(TransactionRepository transactionRepository, AssetRepository assetRepository, CryptoRepository cryptoRepository) {
         this.transactionRepository = transactionRepository;
+        this.assetRepository = assetRepository;
         this.cryptoRepository = cryptoRepository;
     }
 
     /**
-     * Get transaction history (optionally filtered by portfolioId and/or cryptoId)
+     * Get transaction history (optionally filtered by portfolioId and/or assetId)
      * GET /api/v1/transactions/history
      */
     @GetMapping("/history")
     public ResponseEntity<List<TransactionHistoryDTO>> getTransactionHistory(
             @RequestParam(required = false) Long portfolioId,
-            @RequestParam(required = false) Long cryptoId
+            @RequestParam(required = false) Long assetId
     ) {
-        log.info("Fetching transaction history, portfolioId={}, cryptoId={}", portfolioId, cryptoId);
+        log.info("Fetching transaction history, portfolioId={}, assetId={}", portfolioId, assetId);
 
         List<Transaction> transactions;
-        if (portfolioId != null && cryptoId != null) {
-            transactions = transactionRepository.findByPortfolioIdAndCryptoId(portfolioId, cryptoId);
+        if (portfolioId != null && assetId != null) {
+            transactions = transactionRepository.findByPortfolioIdAndAssetId(portfolioId, assetId);
         } else if (portfolioId != null) {
             transactions = transactionRepository.findByPortfolioId(portfolioId);
-        } else if (cryptoId != null) {
-            transactions = transactionRepository.findByCryptoId(cryptoId);
+        } else if (assetId != null) {
+            transactions = transactionRepository.findByAssetId(assetId);
         } else {
             transactions = new ArrayList<>();
             transactionRepository.findAll().forEach(transactions::add);
@@ -63,15 +67,31 @@ public class TransactionController {
     }
 
     private TransactionHistoryDTO toDTO(Transaction transaction) {
-        String symbol = cryptoRepository.findById(transaction.getCryptoId())
-                .map(Crypto::getSymbol)
-                .orElse("UNKNOWN");
+        Asset asset = transaction.getAssetId() == null
+                ? new Asset(null, "UNKNOWN", "UNKNOWN", "UNKNOWN", null)
+                : assetRepository.findById(transaction.getAssetId())
+                        .orElse(new Asset(transaction.getAssetId(), "UNKNOWN", "UNKNOWN", "UNKNOWN", null));
+
+        Crypto crypto = transaction.getAssetId() == null
+                ? null
+                : cryptoRepository.findByAssetId(transaction.getAssetId())
+                        .orElse(null);
+
+        String symbol = asset.getSymbol();
+        String name = asset.getName();
+
+        if (crypto != null) {
+            // The crypto row is the asset-specific extension; keeping the lookup ensures the two tables stay joined.
+            symbol = asset.getSymbol();
+            name = asset.getName();
+        }
 
         return new TransactionHistoryDTO(
                 transaction.getTransactionId(),
                 transaction.getPortfolioId(),
-                transaction.getCryptoId(),
+                transaction.getAssetId(),
                 symbol,
+                name,
                 transaction.getTransactionType(),
                 transaction.getQuantity(),
                 transaction.getTransactionPrice(),

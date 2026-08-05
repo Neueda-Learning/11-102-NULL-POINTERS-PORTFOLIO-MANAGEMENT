@@ -14,8 +14,9 @@ public class TransactionHistoryDTO {
 
     private Long transactionId;
     private Long portfolioId;
-    private Long cryptoId;
+    private Long assetId;
     private String symbol;
+    private String name;
     private String transactionType;
     private BigDecimal quantity;
     private BigDecimal transactionPrice;
