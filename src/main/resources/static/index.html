@@ -103,10 +103,24 @@
 
     <!-- ── MARKETPLACE ──────────────────────────────────────────────────── -->
     <section id="section-marketplace" class="section">
-      <div class="section-header"><h2>Marketplace</h2></div>
-      <div class="card empty-state">
-        <div style="font-size:3rem;">🛒</div>
-        <p>Marketplace coming soon.</p>
+      <div class="section-header">
+        <h2>Marketplace</h2>
+        <div class="filter-row">
+          <label for="marketplace-filter">Category:</label>
+          <select id="marketplace-filter" onchange="loadMarketplace()">
+            <option value="STOCK">Stocks</option>
+            <option value="CRYPTO">Crypto</option>
+          </select>
+        </div>
+      </div>
+      <div class="card table-card">
+        <div class="filter-row" id="marketplace-pagination-row">
+          <button class="btn btn-secondary btn-sm" id="market-prev-btn" onclick="changeMarketplacePage(-1)">◀ Prev</button>
+          <span id="market-page-text" style="font-size:.85rem;color:var(--text-muted);">Page 1 of 1</span>
+          <button class="btn btn-secondary btn-sm" id="market-next-btn" onclick="changeMarketplacePage(1)">Next ▶</button>
+        </div>
+        <div id="market-status" class="status-bar"></div>
+        <div id="market-container" style="overflow-x:auto;"></div>
       </div>
     </section>
 
@@ -203,6 +217,23 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeSellModal()">Cancel</button>
       <button class="btn btn-danger" onclick="confirmSell()">Confirm Sell</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ STOCK DETAILS / PERFORMANCE MODAL ══════════════════════════════════ -->
+<div class="modal-overlay" id="stock-insight-modal" onclick="closeStockInsightModal()">
+  <div class="modal large-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="stock-insight-title">📊 Stock Insight</h3>
+      <button class="modal-close" onclick="closeStockInsightModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="stock-insight-status" class="status-bar"></div>
+      <div id="stock-insight-content"></div>
+      <div id="stock-performance-wrap" class="chart-wrap" style="height:260px;display:none;">
+        <canvas id="chart-stock-performance"></canvas>
+      </div>
     </div>
   </div>
 </div>
