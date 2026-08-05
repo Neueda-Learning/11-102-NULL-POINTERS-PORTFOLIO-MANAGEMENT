@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bonds - Portfolio Manager</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/bonds.css">
+    <script src="/js/theme.js"></script>
+</head>
+<body>
+
+<header>
+    <div>
+        <h1 style="margin: 0;">📊 Bond Manager</h1>
+        <p style="color: var(--text-muted); margin-top: 4px;">Add, view and delete your bond investments</p>
+    </div>
+    <div style="display:flex; gap:12px; align-items:center;">
+        <a href="/" class="nav-link">← Dashboard</a>
+        <button id="theme-toggle-btn" class="theme-btn" onclick="toggleTheme()">🌙 Dark Mode</button>
+    </div>
+</header>
+
+<!-- Add Bond Form -->
+<div class="card" style="margin-bottom:24px;">
+    <h2 style="margin-top:0;">➕ Add New Bond</h2>
+    <form id="bond-form" onsubmit="submitBond(event)">
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="issuer">Issuer Name</label>
+                <input type="text" id="issuer" placeholder="e.g. HDFC Bank" required />
+            </div>
+            <div class="form-group">
+                <label for="interestRate">Interest Rate (%)</label>
+                <input type="number" id="interestRate" placeholder="e.g. 7.5" step="0.0001" min="0.0001" required />
+            </div>
+            <div class="form-group">
+                <label for="amountInvested">Amount Invested (₹)</label>
+                <input type="number" id="amountInvested" placeholder="e.g. 100000" step="0.01" min="0.01" required />
+            </div>
+            <div class="form-group">
+                <label for="startDate">Start Date</label>
+                <input type="date" id="startDate" required />
+            </div>
+            <div class="form-group">
+                <label for="tenureMonths">Tenure (Months)</label>
+                <input type="number" id="tenureMonths" placeholder="e.g. 12" min="1" required />
+            </div>
+        </div>
+        <div style="margin-top:16px; display:flex; gap:12px; align-items:center;">
+            <button type="submit" class="btn btn-primary" id="submit-btn">Add Bond</button>
+            <span id="form-status"></span>
+        </div>
+    </form>
+</div>
+
+<!-- Bond List -->
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h2 style="margin:0;">📋 Your Bonds</h2>
+        <button class="btn btn-secondary" onclick="loadBonds()">🔄 Refresh</button>
+    </div>
+    <div id="bonds-status" style="color:var(--text-muted); margin-bottom:12px;"></div>
+    <div id="bonds-container">
+        <p style="color:var(--text-muted);">Loading bonds...</p>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="modal-overlay" class="modal-overlay" style="display:none;" onclick="closeModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+        <h3 style="margin-top:0;">🗑️ Confirm Delete</h3>
+        <p>Are you sure you want to delete bond <strong id="modal-issuer"></strong>?</p>
+        <p style="color:var(--text-muted); font-size:0.875rem;">This will remove data from <code>asset</code> and <code>bonds</code> tables. Transaction history will be preserved.</p>
+        <div style="display:flex; gap:12px; margin-top:20px;">
+            <button class="btn btn-danger" onclick="confirmDelete()">Yes, Delete</button>
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script src="/js/bonds.js"></script>
+</body>
+</html>
+

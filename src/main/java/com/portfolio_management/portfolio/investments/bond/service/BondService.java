@@ -72,6 +72,17 @@ public class BondService {
         bond.setMaturityDate(request.startDate().plusMonths(request.tenureMonths()));
 
         Bond saved = bondRepository.save(bond);
+
+        // Log transaction in transaction_history
+        jdbcTemplate.update(
+                "INSERT INTO transaction_history (portfolio_id, asset_id, transaction_type, quantity, transaction_price, transaction_date) VALUES (?, ?, ?, ?, ?, NOW())",
+                savedAsset.getPortfolioId(),
+                savedAsset.getAssetId(),
+                "BUY",
+                new BigDecimal("1.0000"),
+                request.amountInvested()
+        );
+
         return toResponse(saved);
     }
 
@@ -204,4 +215,3 @@ public class BondService {
     }
 
 }
-

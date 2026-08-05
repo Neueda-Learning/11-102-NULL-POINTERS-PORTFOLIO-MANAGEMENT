@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS portfolio (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS asset (
+
     asset_id BIGINT AUTO_INCREMENT PRIMARY KEY,
 
     portfolio_id BIGINT NOT NULL,
@@ -28,7 +29,7 @@ CREATE TABLE IF NOT EXISTS transaction_history (
 
     portfolio_id BIGINT NOT NULL,
 
-    asset_id BIGINT NOT NULL,
+    asset_id BIGINT NULL,
 
     transaction_type ENUM('BUY','SELL') NOT NULL,
 
@@ -44,7 +45,7 @@ CREATE TABLE IF NOT EXISTS transaction_history (
 
     FOREIGN KEY (asset_id)
         REFERENCES asset(asset_id)
-        ON DELETE CASCADE
+        ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS bonds (
