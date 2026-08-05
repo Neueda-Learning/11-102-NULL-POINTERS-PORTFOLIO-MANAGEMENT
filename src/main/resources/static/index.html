@@ -4,9 +4,9 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Portfolio Management</title>
-  <link rel="stylesheet" href="/css/style.css"/>
+  <link rel="stylesheet" href="css/style.css"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="/js/theme.js"></script>
+  <script src="js/theme.js"></script>
 </head>
 <body>
 
@@ -64,11 +64,7 @@
     <!-- ── DASHBOARD ───────────────────────────────────────────────────── -->
     <section id="section-dashboard" class="section active">
       <div class="section-header"><h2>Dashboard</h2></div>
-
-      <!-- Summary cards -->
       <div class="summary-grid" id="summary-cards"></div>
-
-      <!-- Charts -->
       <div class="charts-grid">
         <div class="card chart-card">
           <h3>Asset Allocation</h3>
@@ -109,18 +105,31 @@
           <label for="marketplace-filter">Category:</label>
           <select id="marketplace-filter" onchange="loadMarketplace()">
             <option value="STOCK">Stocks</option>
-            <option value="BOND">Bonds</option>
             <option value="CRYPTO">Crypto</option>
+            <option value="BOND">Bonds</option>
           </select>
         </div>
       </div>
       <div class="card table-card">
-        <div class="filter-row" id="marketplace-pagination-row">
+        <!-- Crypto toolbar — visible only when CRYPTO is selected -->
+        <div class="marketplace-toolbar" id="crypto-search-toolbar" style="display:none;">
+          <label class="sr-only" for="market-symbol-input">Search crypto symbol</label>
+          <input id="market-symbol-input" type="text" placeholder="Search crypto symbol e.g. BTCUSD" />
+          <button class="btn btn-secondary" onclick="lookupCryptoBySymbol()">Search</button>
+          <button class="btn btn-secondary" onclick="refreshMarketplace()">🔄 Refresh Market</button>
+          <button class="btn btn-primary" onclick="openAddModal('CRYPTO')">+ Buy Crypto</button>
+        </div>
+        <!-- Pagination row — visible only when STOCK is selected -->
+        <div class="filter-row" id="marketplace-pagination-row" style="display:none;">
           <button class="btn btn-secondary btn-sm" id="market-prev-btn" onclick="changeMarketplacePage(-1)">◀ Prev</button>
           <span id="market-page-text" style="font-size:.85rem;color:var(--text-muted);">Page 1 of 1</span>
           <button class="btn btn-secondary btn-sm" id="market-next-btn" onclick="changeMarketplacePage(1)">Next ▶</button>
         </div>
         <div id="market-status" class="status-bar"></div>
+        <div id="market-lookup" class="market-lookup"></div>
+        <!-- Crypto card grid -->
+        <div id="market-grid" style="display:none;"></div>
+        <!-- Stocks / Bonds table -->
         <div id="market-container" style="overflow-x:auto;"></div>
       </div>
     </section>
@@ -232,7 +241,7 @@
     </div>
     <div class="modal-body">
       <div class="form-group" style="margin-bottom:20px;">
-        <label>Asset Type</label>
+        <label for="add-type">Asset Type</label>
         <select id="add-type" onchange="switchAddForm(this.value)">
           <option value="STOCK">Stock</option>
           <option value="BOND">Bond</option>
@@ -242,29 +251,33 @@
 
       <!-- STOCK form -->
       <div id="form-STOCK" class="form-grid">
-        <div class="form-group"><label>Symbol</label><input id="stock-symbol" placeholder="e.g. AAPL"/></div>
-        <div class="form-group"><label>Company Name</label><input id="stock-name" placeholder="e.g. Apple Inc"/></div>
-        <div class="form-group"><label>Shares</label><input type="number" id="stock-quantity" placeholder="10" step="0.0001" min="0.0001"/></div>
-        <div class="form-group"><label>Purchase Price ($)</label><input type="number" id="stock-price" placeholder="150.00" step="0.01" min="0.01"/></div>
-        <div class="form-group"><label>Purchase Date</label><input type="date" id="stock-date"/></div>
+        <div class="form-group"><label for="stock-symbol">Symbol</label><input id="stock-symbol" placeholder="e.g. AAPL"/></div>
+        <div class="form-group"><label for="stock-name">Company Name</label><input id="stock-name" placeholder="e.g. Apple Inc"/></div>
+        <div class="form-group"><label for="stock-quantity">Shares</label><input type="number" id="stock-quantity" placeholder="10" step="0.0001" min="0.0001"/></div>
+        <div class="form-group"><label for="stock-price">Purchase Price ($)</label><input type="number" id="stock-price" placeholder="150.00" step="0.01" min="0.01"/></div>
+        <div class="form-group"><label for="stock-date">Purchase Date</label><input type="date" id="stock-date"/></div>
       </div>
 
       <!-- BOND form -->
       <div id="form-BOND" class="form-grid" style="display:none;">
-        <div class="form-group"><label>Issuer Name</label><input id="bond-issuer" placeholder="e.g. HDFC Bank"/></div>
-        <div class="form-group"><label>Interest Rate (%)</label><input type="number" id="bond-rate" placeholder="7.5" step="0.0001" min="0.0001"/></div>
-        <div class="form-group"><label>Amount Invested ($)</label><input type="number" id="bond-amount" placeholder="100000" step="0.01" min="0.01"/></div>
-        <div class="form-group"><label>Start Date</label><input type="date" id="bond-start"/></div>
-        <div class="form-group"><label>Tenure (Months)</label><input type="number" id="bond-tenure" placeholder="12" min="1"/></div>
+        <div class="form-group"><label for="bond-issuer">Issuer Name</label><input id="bond-issuer" placeholder="e.g. HDFC Bank"/></div>
+        <div class="form-group"><label for="bond-rate">Interest Rate (%)</label><input type="number" id="bond-rate" placeholder="7.5" step="0.0001" min="0.0001"/></div>
+        <div class="form-group"><label for="bond-amount">Amount Invested ($)</label><input type="number" id="bond-amount" placeholder="100000" step="0.01" min="0.01"/></div>
+        <div class="form-group"><label for="bond-start">Start Date</label><input type="date" id="bond-start"/></div>
+        <div class="form-group"><label for="bond-tenure">Tenure (Months)</label><input type="number" id="bond-tenure" placeholder="12" min="1"/></div>
       </div>
 
       <!-- CRYPTO form -->
       <div id="form-CRYPTO" class="form-grid" style="display:none;">
-        <div class="form-group"><label>Symbol</label><input id="crypto-symbol" placeholder="e.g. BTC"/></div>
-        <div class="form-group"><label>Coin Name</label><input id="crypto-name" placeholder="e.g. Bitcoin"/></div>
-        <div class="form-group"><label>Quantity</label><input type="number" id="crypto-quantity" placeholder="0.5" step="any" min="0"/></div>
-        <div class="form-group"><label>Buy Price ($)</label><input type="number" id="crypto-buy-price" placeholder="40000" step="0.01" min="0.01"/></div>
-        <div class="form-group"><label>Current Price ($)</label><input type="number" id="crypto-current-price" placeholder="45000" step="0.01" min="0.01"/></div>
+        <div class="form-group">
+          <label for="crypto-symbol">Symbol</label>
+          <input id="crypto-symbol" placeholder="e.g. BTCUSD" oninput="onCryptoSymbolInput()"/>
+          <small id="crypto-lookup-status" style="color:var(--text-muted);font-size:.8rem;"></small>
+        </div>
+        <div class="form-group"><label for="crypto-name">Coin Name</label><input id="crypto-name" placeholder="Auto-fetched when symbol is entered"/></div>
+        <div class="form-group"><label for="crypto-quantity">Quantity</label><input type="number" id="crypto-quantity" placeholder="0.5" step="any" min="0"/></div>
+        <div class="form-group"><label for="crypto-buy-price">Buy Price ($)</label><input type="number" id="crypto-buy-price" placeholder="40000" step="0.01" min="0.01"/></div>
+        <div class="form-group"><label for="crypto-current-price">Current Price ($)</label><input type="number" id="crypto-current-price" placeholder="Auto-fetched" step="0.01" min="0.01"/></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -286,11 +299,34 @@
     </div>
     <div class="modal-body">
       <p>Are you sure you want to sell <strong id="sell-asset-name"></strong>?</p>
-      <p style="color:var(--text-muted);font-size:.875rem;">This records a SELL transaction and removes the asset from your portfolio.</p>
+      <div id="sell-crypto-fields" style="display:none;margin-top:16px;">
+        <div class="form-group">
+          <label for="sell-quantity">Quantity to Sell</label>
+          <input type="number" id="sell-quantity" placeholder="0.00" step="any" min="0.00000001" />
+          <small id="sell-quantity-help" style="color:var(--text-muted);"></small>
+        </div>
+      </div>
+      <p id="sell-help-text" style="color:var(--text-muted);font-size:.875rem;">This records a SELL transaction and updates your holdings from the backend.</p>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeSellModal()">Cancel</button>
       <button class="btn btn-danger" onclick="confirmSell()">Confirm Sell</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CRYPTO DETAILS MODAL ═══════════════════════════════════════════════ -->
+<div class="modal-overlay" id="crypto-details-modal" onclick="closeCryptoDetailsModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>🪙 Crypto Details</h3>
+      <button class="modal-close" onclick="closeCryptoDetailsModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="crypto-details-content"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeCryptoDetailsModal()">Close</button>
     </div>
   </div>
 </div>
@@ -309,10 +345,12 @@
         <canvas id="chart-stock-performance"></canvas>
       </div>
     </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeStockInsightModal()">Close</button>
+    </div>
   </div>
 </div>
 
-<script src="/js/app.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>
-

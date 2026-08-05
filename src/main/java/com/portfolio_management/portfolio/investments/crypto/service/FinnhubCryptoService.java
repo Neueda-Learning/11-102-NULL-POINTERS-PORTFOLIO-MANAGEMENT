@@ -20,15 +20,34 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
-
 @Slf4j
 @Service
 @Transactional
 public class FinnhubCryptoService implements CryptoService {
+
+    private static final Map<String, String> SYMBOL_NAME_MAP = new HashMap<>();
+    static {
+        SYMBOL_NAME_MAP.put("BTCUSD",  "Bitcoin");
+        SYMBOL_NAME_MAP.put("ETHUSD",  "Ethereum");
+        SYMBOL_NAME_MAP.put("BNBUSD",  "BNB");
+        SYMBOL_NAME_MAP.put("XRPUSD",  "XRP");
+        SYMBOL_NAME_MAP.put("SOLUSD",  "Solana");
+        SYMBOL_NAME_MAP.put("ADAUSD",  "Cardano");
+        SYMBOL_NAME_MAP.put("DOGEUSD", "Dogecoin");
+        SYMBOL_NAME_MAP.put("TRXUSD",  "TRON");
+        SYMBOL_NAME_MAP.put("AVAXUSD", "Avalanche");
+        SYMBOL_NAME_MAP.put("MATICUSD","Polygon");
+        SYMBOL_NAME_MAP.put("LTCUSD",  "Litecoin");
+        SYMBOL_NAME_MAP.put("LINKUSD", "Chainlink");
+        SYMBOL_NAME_MAP.put("UNIUSD",  "Uniswap");
+        SYMBOL_NAME_MAP.put("ATOMUSD", "Cosmos");
+        SYMBOL_NAME_MAP.put("DOTUSD",  "Polkadot");
+        SYMBOL_NAME_MAP.put("SHIBUSD", "Shiba Inu");
+        SYMBOL_NAME_MAP.put("TONUSD",  "Toncoin");
+        SYMBOL_NAME_MAP.put("NEARUSD", "NEAR Protocol");
+    }
 
     private final CryptoRepository cryptoRepository;
     private final AssetRepository assetRepository;
@@ -134,8 +153,7 @@ public class FinnhubCryptoService implements CryptoService {
                             normalizedSymbol,
                             priceData != null && priceData.getDisplayName() != null ? priceData.getDisplayName() : normalizedSymbol,
                             "CRYPTO",
-                            "USD",
-                            null
+                            "USD"
                     )));
 
             // Find existing crypto or create new one
@@ -340,8 +358,7 @@ public class FinnhubCryptoService implements CryptoService {
                         normalizedSymbol,
                         normalizedName,
                         "CRYPTO",
-                        "USD",
-                        LocalDateTime.now()
+                        "USD"
                 )));
 
         if (asset.getPortfolioId() == null) {
@@ -378,10 +395,10 @@ public class FinnhubCryptoService implements CryptoService {
 
     private Asset resolveAsset(Long assetId) {
         if (assetId == null) {
-            return new Asset(null, null, "UNKNOWN", "UNKNOWN", "UNKNOWN", "USD", null);
+            return new Asset(null, null, "UNKNOWN", "UNKNOWN", "UNKNOWN", "USD");
         }
         return assetRepository.findById(assetId)
-                .orElse(new Asset(assetId, null, "UNKNOWN", "UNKNOWN", "UNKNOWN", "USD", null));
+                .orElse(new Asset(assetId, null, "UNKNOWN", "UNKNOWN", "UNKNOWN", "USD"));
     }
 
     /**
@@ -400,6 +417,35 @@ public class FinnhubCryptoService implements CryptoService {
                 crypto.getCurrentValue(),
                 crypto.getProfitLoss()
         );
+    }
+
+    @Override
+    public Map<String, Object> lookupSymbol(String symbol) {
+        String normalizedSymbol = symbol.toUpperCase();
+        log.info("Looking up crypto symbol: {}", normalizedSymbol);
+
+        // Resolve name: check DB first, then static map, then fall back to symbol
+        String name = assetRepository.findBySymbol(normalizedSymbol)
+                .map(Asset::getName)
+                .orElseGet(() -> SYMBOL_NAME_MAP.getOrDefault(normalizedSymbol, normalizedSymbol));
+
+        // Try to fetch live price without persisting
+        BigDecimal currentPrice = BigDecimal.ZERO;
+        try {
+            CryptoPriceResponseDTO priceData = finnhubClient.getCryptoQuote(normalizedSymbol);
+            if (priceData != null && priceData.getCurrentPrice() != null
+                    && priceData.getCurrentPrice().compareTo(BigDecimal.ZERO) > 0) {
+                currentPrice = priceData.getCurrentPrice();
+            }
+        } catch (Exception ex) {
+            log.warn("Could not fetch live price for {} during lookup: {}", normalizedSymbol, ex.getMessage());
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("symbol", normalizedSymbol);
+        result.put("name", name);
+        result.put("currentPrice", currentPrice);
+        return result;
     }
 
     private void recalculateHoldingMetrics(Crypto crypto) {

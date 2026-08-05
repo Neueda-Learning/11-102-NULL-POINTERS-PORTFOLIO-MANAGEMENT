@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -89,6 +90,17 @@ public class CryptoController {
         log.info("Deleting cryptocurrency with ID: {}", id);
         cryptoService.deleteCrypto(id);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Lookup a crypto symbol (price + name) without persisting to DB.
+     * GET /api/v1/crypto/lookup/{symbol}
+     */
+    @GetMapping("/lookup/{symbol}")
+    public ResponseEntity<Map<String, Object>> lookupSymbol(@PathVariable String symbol) {
+        log.info("Looking up crypto symbol: {}", symbol);
+        Map<String, Object> result = cryptoService.lookupSymbol(symbol.toUpperCase());
+        return ResponseEntity.ok(result);
     }
 
     /**

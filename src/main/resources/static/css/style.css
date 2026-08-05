@@ -1,4 +1,4 @@
-/* ── CSS Variables ─────────────────────────────────────────────────────── */
+﻿/* â”€â”€ CSS Variables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 :root {
   --sidebar-width: 230px;
   --header-height: 64px;
@@ -31,7 +31,7 @@
   --sidebar-text: #a5b4fc;
 }
 
-/* ── Reset & Base ─────────────────────────────────────────────────────── */
+/* â”€â”€ Reset & Base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -45,7 +45,19 @@ a { text-decoration: none; }
 button { cursor: pointer; }
 input, select { font-family: inherit; font-size: 0.9rem; }
 
-/* ── Sidebar ─────────────────────────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .sidebar {
   position: fixed;
   top: 0; left: 0; bottom: 0;
@@ -96,7 +108,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   border-top: 1px solid rgba(255,255,255,.1);
 }
 
-/* ── Main Wrapper ─────────────────────────────────────────────────────── */
+/* â”€â”€ Main Wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .main-wrapper {
   margin-left: var(--sidebar-width);
   flex: 1;
@@ -105,7 +117,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   min-height: 100vh;
 }
 
-/* ── Header ─────────────────────────────────────────────────────────────── */
+/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .main-header {
   position: sticky;
   top: 0;
@@ -160,10 +172,10 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   color: var(--success);
 }
 
-/* ── Main Content ─────────────────────────────────────────────────────── */
+/* â”€â”€ Main Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .main-content { padding: 24px 28px; flex: 1; }
 
-/* ── Sections ─────────────────────────────────────────────────────────── */
+/* â”€â”€ Sections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .section { display: none; }
 .section.active { display: block; }
 .section-header {
@@ -174,7 +186,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
 }
 .section-header h2 { font-size: 1.25rem; font-weight: 700; }
 
-/* ── Summary Grid ─────────────────────────────────────────────────────── */
+/* â”€â”€ Summary Grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -207,7 +219,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   margin-top: 4px;
 }
 
-/* ── Charts ───────────────────────────────────────────────────────────── */
+/* â”€â”€ Charts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .charts-grid {
   display: grid;
   grid-template-columns: 1fr 2fr;
@@ -233,7 +245,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   justify-content: center;
 }
 
-/* ── Cards ─────────────────────────────────────────────────────────────── */
+/* â”€â”€ Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -245,7 +257,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
 .table-card { padding: 20px; }
 #marketplace-pagination-row { justify-content: flex-end; margin-bottom: 10px; }
 
-/* ── Tables ───────────────────────────────────────────────────────────── */
+/* â”€â”€ Tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -270,7 +282,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
 .data-table tbody tr:last-child td { border-bottom: none; }
 .data-table tbody tr:hover td { background: var(--bg); }
 
-/* ── Badges ───────────────────────────────────────────────────────────── */
+/* â”€â”€ Badges â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .badge {
   display: inline-block;
   padding: 3px 10px;
@@ -289,11 +301,11 @@ input, select { font-family: inherit; font-size: 0.9rem; }
 [data-theme="dark"] .badge-bond { background: #451a03; color: #fbbf24; }
 [data-theme="dark"] .badge-crypto { background: #2e1065; color: #c084fc; }
 
-/* ── Profit / Loss colors ─────────────────────────────────────────────── */
+/* â”€â”€ Profit / Loss colors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .pos { color: var(--success); font-weight: 600; }
 .neg { color: var(--danger); font-weight: 600; }
 
-/* ── Filter Row ───────────────────────────────────────────────────────── */
+/* â”€â”€ Filter Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .filter-row {
   display: flex;
   align-items: center;
@@ -309,13 +321,13 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   outline: none;
 }
 
-/* ── Status Bar ───────────────────────────────────────────────────────── */
+/* â”€â”€ Status Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .status-bar { margin-bottom: 12px; min-height: 20px; }
 .status-success { color: var(--success); font-weight: 600; font-size: .875rem; }
 .status-error   { color: var(--danger);  font-weight: 600; font-size: .875rem; }
 .status-msg     { font-size: .875rem; }
 
-/* ── Empty State ──────────────────────────────────────────────────────── */
+/* â”€â”€ Empty State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .empty-state {
   text-align: center;
   padding: 52px 0;
@@ -323,7 +335,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
 }
 .empty-state p { margin-top: 8px; font-size: 1rem; }
 
-/* ── Buttons ──────────────────────────────────────────────────────────── */
+/* â”€â”€ Buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -367,7 +379,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
 }
 .theme-btn:hover { background: rgba(255,255,255,.15); color: #fff; }
 
-/* ── Modal ─────────────────────────────────────────────────────────────── */
+/* â”€â”€ Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .modal-overlay {
   display: none;
   position: fixed;
@@ -415,7 +427,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   gap: 12px;
 }
 
-/* ── Forms ─────────────────────────────────────────────────────────────── */
+/* â”€â”€ Forms â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -446,7 +458,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
 .form-group input:focus,
 .form-group select:focus { border-color: var(--primary); }
 
-/* ── Sell / Action buttons ────────────────────────────────────────────── */
+/* â”€â”€ Sell / Action buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .sell-btn {
   background: none;
   border: 1px solid var(--danger);
@@ -471,7 +483,146 @@ input, select { font-family: inherit; font-size: 0.9rem; }
 }
 .detail-btn:hover { border-color: var(--primary); color: var(--primary); }
 
-/* ── Settings ──────────────────────────────────────────────────────────── */
+.danger-outline {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.danger-outline:hover {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+
+.action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.marketplace-toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.marketplace-toolbar input {
+  flex: 1 1 280px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.market-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.market-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.market-card-header h3 {
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+
+.market-card-header p {
+  color: var(--text-muted);
+  font-size: .85rem;
+}
+
+.market-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.market-metrics div {
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.market-metrics span,
+.details-grid span {
+  display: block;
+  color: var(--text-muted);
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  margin-bottom: 4px;
+}
+
+.market-metrics strong,
+.details-grid strong {
+  font-size: .95rem;
+}
+
+.market-card-actions,
+.lookup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.market-lookup {
+  margin-bottom: 16px;
+}
+
+.lookup-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--bg);
+}
+
+.lookup-card p {
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.lookup-price {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.details-grid div {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+/* â”€â”€ Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .settings-layout {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -555,7 +706,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   min-height: 20px;
 }
 
-/* ── Responsive ────────────────────────────────────────────────────────── */
+/* â”€â”€ Responsive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (max-width: 900px) {
   .charts-grid { grid-template-columns: 1fr; }
   .settings-form-grid { grid-template-columns: 1fr; }
@@ -566,5 +717,8 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   .main-wrapper { margin-left: 60px; }
   .header-right { gap: 8px; }
   .kpi-pill { min-width: auto; }
+  .lookup-card,
+  .details-grid { grid-template-columns: 1fr; }
+  .lookup-card { flex-direction: column; align-items: flex-start; }
 }
 
