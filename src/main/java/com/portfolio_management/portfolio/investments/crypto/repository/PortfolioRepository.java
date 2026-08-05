@@ -8,7 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
-@Repository
+@Repository("cryptoPortfolioRepository")
 public interface PortfolioRepository extends CrudRepository<Portfolio, Long> {
 
     /**
@@ -23,4 +23,5 @@ public interface PortfolioRepository extends CrudRepository<Portfolio, Long> {
     @Query("SELECT * FROM portfolio ORDER BY created_at DESC")
     Iterable<Portfolio> findAllOrderByCreatedAtDesc();
 }
+
 

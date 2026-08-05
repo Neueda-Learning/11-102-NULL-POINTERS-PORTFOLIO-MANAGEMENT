@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Portfolio Management</title>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/js/theme.js"></script>
+</head>
+<body>
+
+<!-- ═══ SIDEBAR ═══════════════════════════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <span class="brand-icon">📈</span>
+    <span class="brand-name">PortfolioMgr</span>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="#" class="nav-item active" data-section="dashboard">
+      <span class="nav-icon">🏠</span> Dashboard
+    </a>
+    <a href="#" class="nav-item" data-section="holdings">
+      <span class="nav-icon">📂</span> Holdings
+    </a>
+    <a href="#" class="nav-item" data-section="marketplace">
+      <span class="nav-icon">🛒</span> Marketplace
+    </a>
+    <a href="#" class="nav-item" data-section="transactions">
+      <span class="nav-icon">🧾</span> Transactions
+    </a>
+    <a href="#" class="nav-item" data-section="settings">
+      <span class="nav-icon">⚙️</span> Settings
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <button class="theme-btn" id="theme-toggle-btn" onclick="toggleTheme()">🌙 Dark Mode</button>
+  </div>
+</aside>
+
+<!-- ═══ MAIN WRAPPER ═══════════════════════════════════════════════════════ -->
+<div class="main-wrapper">
+
+  <!-- Header -->
+  <header class="main-header">
+    <h1 class="header-title">Portfolio Management</h1>
+    <div class="header-right">
+      <div class="kpi-pill">
+        <span class="kpi-label">Total Value</span>
+        <span class="kpi-value" id="kpi-total-value">—</span>
+      </div>
+      <div class="kpi-pill">
+        <span class="kpi-label">Returns</span>
+        <span class="kpi-value" id="kpi-returns">—</span>
+        <span class="kpi-badge" id="kpi-returns-pct">—</span>
+      </div>
+      <button class="btn btn-primary" onclick="openAddModal()">+ Add Asset</button>
+    </div>
+  </header>
+
+  <!-- Content -->
+  <main class="main-content">
+
+    <!-- ── DASHBOARD ───────────────────────────────────────────────────── -->
+    <section id="section-dashboard" class="section active">
+      <div class="section-header"><h2>Dashboard</h2></div>
+
+      <!-- Summary cards -->
+      <div class="summary-grid" id="summary-cards"></div>
+
+      <!-- Charts -->
+      <div class="charts-grid">
+        <div class="card chart-card">
+          <h3>Asset Allocation</h3>
+          <div class="chart-wrap"><canvas id="chart-allocation"></canvas></div>
+        </div>
+        <div class="card chart-card">
+          <h3>Portfolio Performance</h3>
+          <div class="chart-wrap"><canvas id="chart-performance"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── HOLDINGS ─────────────────────────────────────────────────────── -->
+    <section id="section-holdings" class="section">
+      <div class="section-header">
+        <h2>Holdings</h2>
+        <div class="filter-row">
+          <label for="holdings-filter">Category:</label>
+          <select id="holdings-filter" onchange="loadHoldings(this.value)">
+            <option value="ALL">All</option>
+            <option value="STOCK">Stocks</option>
+            <option value="BOND">Bonds</option>
+            <option value="CRYPTO">Crypto</option>
+          </select>
+        </div>
+      </div>
+      <div class="card table-card">
+        <div id="holdings-status" class="status-bar"></div>
+        <div id="holdings-container" style="overflow-x:auto;"></div>
+      </div>
+    </section>
+
+    <!-- ── MARKETPLACE ──────────────────────────────────────────────────── -->
+    <section id="section-marketplace" class="section">
+      <div class="section-header">
+        <h2>Marketplace</h2>
+        <div class="filter-row">
+          <label for="marketplace-filter">Category:</label>
+          <select id="marketplace-filter" onchange="loadMarketplace()">
+            <option value="STOCK">Stocks</option>
+            <option value="BOND">Bonds</option>
+            <option value="CRYPTO">Crypto</option>
+          </select>
+        </div>
+      </div>
+      <div class="card table-card">
+        <div class="filter-row" id="marketplace-pagination-row">
+          <button class="btn btn-secondary btn-sm" id="market-prev-btn" onclick="changeMarketplacePage(-1)">◀ Prev</button>
+          <span id="market-page-text" style="font-size:.85rem;color:var(--text-muted);">Page 1 of 1</span>
+          <button class="btn btn-secondary btn-sm" id="market-next-btn" onclick="changeMarketplacePage(1)">Next ▶</button>
+        </div>
+        <div id="market-status" class="status-bar"></div>
+        <div id="market-container" style="overflow-x:auto;"></div>
+      </div>
+    </section>
+
+    <!-- ── TRANSACTIONS ─────────────────────────────────────────────────── -->
+    <section id="section-transactions" class="section">
+      <div class="section-header">
+        <h2>Transaction History</h2>
+        <button class="btn btn-secondary" onclick="loadTransactions()">🔄 Refresh</button>
+      </div>
+      <div class="card table-card">
+        <div id="tx-status" class="status-bar"></div>
+        <div id="tx-container" style="overflow-x:auto;"></div>
+      </div>
+    </section>
+
+    <!-- ── SETTINGS ─────────────────────────────────────────────────────── -->
+    <section id="section-settings" class="section">
+      <div class="section-header"><h2>Settings</h2></div>
+      <div class="settings-layout">
+        <div class="card settings-card profile-card">
+          <div class="settings-card-head">
+            <h3>Profile</h3>
+            <span class="settings-chip">Demo</span>
+          </div>
+          <p class="settings-card-sub">Manage your public profile details and visibility.</p>
+          <div class="profile-inline">
+            <div class="profile-avatar">PM</div>
+            <div>
+              <div class="profile-name">Portfolio Manager</div>
+              <div class="profile-email">manager@portfolio.local</div>
+            </div>
+          </div>
+          <div class="settings-actions">
+            <button class="btn btn-primary" onclick="onSettingsAction('addProfile')">Add Profile</button>
+            <button class="btn btn-secondary" onclick="onSettingsAction('editProfile')">Edit Profile</button>
+            <button class="btn btn-secondary" onclick="onSettingsAction('showProfile')">Show Profile</button>
+          </div>
+        </div>
+
+        <div class="card settings-card">
+          <div class="settings-card-head">
+            <h3>Preferences</h3>
+          </div>
+          <p class="settings-card-sub">Personalize locale and dashboard behavior.</p>
+          <div class="settings-form-grid">
+            <div class="form-group">
+              <label for="settings-currency">Default Currency</label>
+              <select id="settings-currency">
+                <option>USD</option>
+                <option>EUR</option>
+                <option>INR</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="settings-language">Language</label>
+              <select id="settings-language">
+                <option>English</option>
+                <option>Spanish</option>
+                <option>Hindi</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-actions">
+            <button class="btn btn-secondary" onclick="onSettingsAction('savePreferences')">Save Preferences</button>
+          </div>
+        </div>
+
+        <div class="card settings-card">
+          <div class="settings-card-head">
+            <h3>Security</h3>
+          </div>
+          <p class="settings-card-sub">Review account security and sessions.</p>
+          <div class="settings-actions">
+            <button class="btn btn-secondary" onclick="onSettingsAction('changePassword')">Change Password</button>
+            <button class="btn btn-secondary" onclick="onSettingsAction('enable2fa')">Enable 2FA</button>
+            <button class="btn btn-secondary" onclick="onSettingsAction('sessionLog')">View Session Log</button>
+          </div>
+        </div>
+
+        <div class="card settings-card">
+          <div class="settings-card-head">
+            <h3>Account Tools</h3>
+          </div>
+          <p class="settings-card-sub">Quick actions for backup and account lifecycle.</p>
+          <div class="settings-actions">
+            <button class="btn btn-secondary" onclick="onSettingsAction('exportData')">Export Data</button>
+            <button class="btn btn-secondary" onclick="onSettingsAction('downloadReport')">Download Report</button>
+            <button class="btn btn-danger" onclick="onSettingsAction('deactivate')">Deactivate Account</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card settings-status-card">
+        <div id="settings-status" class="status-msg">Select an action above to see demo responses.</div>
+        <div id="settings-profile-preview" class="settings-profile-preview"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ═══ ADD ASSET MODAL ═══════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="add-modal" onclick="closeAddModal()">
+  <div class="modal large-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>➕ Add New Asset</h3>
+      <button class="modal-close" onclick="closeAddModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="margin-bottom:20px;">
+        <label>Asset Type</label>
+        <select id="add-type" onchange="switchAddForm(this.value)">
+          <option value="STOCK">Stock</option>
+          <option value="BOND">Bond</option>
+          <option value="CRYPTO">Crypto</option>
+        </select>
+      </div>
+
+      <!-- STOCK form -->
+      <div id="form-STOCK" class="form-grid">
+        <div class="form-group"><label>Symbol</label><input id="stock-symbol" placeholder="e.g. AAPL"/></div>
+        <div class="form-group"><label>Company Name</label><input id="stock-name" placeholder="e.g. Apple Inc"/></div>
+        <div class="form-group"><label>Shares</label><input type="number" id="stock-quantity" placeholder="10" step="0.0001" min="0.0001"/></div>
+        <div class="form-group"><label>Purchase Price ($)</label><input type="number" id="stock-price" placeholder="150.00" step="0.01" min="0.01"/></div>
+        <div class="form-group"><label>Purchase Date</label><input type="date" id="stock-date"/></div>
+      </div>
+
+      <!-- BOND form -->
+      <div id="form-BOND" class="form-grid" style="display:none;">
+        <div class="form-group"><label>Issuer Name</label><input id="bond-issuer" placeholder="e.g. HDFC Bank"/></div>
+        <div class="form-group"><label>Interest Rate (%)</label><input type="number" id="bond-rate" placeholder="7.5" step="0.0001" min="0.0001"/></div>
+        <div class="form-group"><label>Amount Invested ($)</label><input type="number" id="bond-amount" placeholder="100000" step="0.01" min="0.01"/></div>
+        <div class="form-group"><label>Start Date</label><input type="date" id="bond-start"/></div>
+        <div class="form-group"><label>Tenure (Months)</label><input type="number" id="bond-tenure" placeholder="12" min="1"/></div>
+      </div>
+
+      <!-- CRYPTO form -->
+      <div id="form-CRYPTO" class="form-grid" style="display:none;">
+        <div class="form-group"><label>Symbol</label><input id="crypto-symbol" placeholder="e.g. BTC"/></div>
+        <div class="form-group"><label>Coin Name</label><input id="crypto-name" placeholder="e.g. Bitcoin"/></div>
+        <div class="form-group"><label>Quantity</label><input type="number" id="crypto-quantity" placeholder="0.5" step="any" min="0"/></div>
+        <div class="form-group"><label>Buy Price ($)</label><input type="number" id="crypto-buy-price" placeholder="40000" step="0.01" min="0.01"/></div>
+        <div class="form-group"><label>Current Price ($)</label><input type="number" id="crypto-current-price" placeholder="45000" step="0.01" min="0.01"/></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span id="add-status" class="status-msg"></span>
+      <div style="display:flex;gap:12px;">
+        <button class="btn btn-secondary" onclick="closeAddModal()">Cancel</button>
+        <button class="btn btn-primary" id="add-submit-btn" onclick="submitAddAsset()">Add Asset</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SELL CONFIRM MODAL ════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="sell-modal" onclick="closeSellModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>🔁 Confirm Sell</h3>
+      <button class="modal-close" onclick="closeSellModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p>Are you sure you want to sell <strong id="sell-asset-name"></strong>?</p>
+      <p style="color:var(--text-muted);font-size:.875rem;">This records a SELL transaction and removes the asset from your portfolio.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeSellModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmSell()">Confirm Sell</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ STOCK DETAILS / PERFORMANCE MODAL ══════════════════════════════════ -->
+<div class="modal-overlay" id="stock-insight-modal" onclick="closeStockInsightModal()">
+  <div class="modal large-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="stock-insight-title">📊 Stock Insight</h3>
+      <button class="modal-close" onclick="closeStockInsightModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="stock-insight-status" class="status-bar"></div>
+      <div id="stock-insight-content"></div>
+      <div id="stock-performance-wrap" class="chart-wrap" style="height:260px;display:none;">
+        <canvas id="chart-stock-performance"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
+
