@@ -5,6 +5,7 @@ import com.portfolio_management.portfolio.investments.stock.dto.CompanyDetailsRe
 import com.portfolio_management.portfolio.investments.stock.dto.MarketplacePageResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockHoldingDetailsResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockHoldingResponse;
+import com.portfolio_management.portfolio.investments.stock.dto.StockPerformanceResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockSearchItemResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockSubscriptionsRequest;
 import com.portfolio_management.portfolio.investments.stock.dto.StockTransactionResponse;
@@ -64,6 +65,11 @@ public class StockController {
             @RequestParam(defaultValue = "10") int size
     ) {
         return ResponseEntity.ok(stockMarketService.getMarketplacePage(page, size));
+    }
+
+    @GetMapping("/stocks/{symbol}/performance")
+    public ResponseEntity<StockPerformanceResponse> getStockPerformance(@PathVariable String symbol) {
+        return ResponseEntity.ok(stockMarketService.getPerformance(symbol));
     }
 
     @PostMapping("/portfolios/{portfolioId}/stocks/buy")

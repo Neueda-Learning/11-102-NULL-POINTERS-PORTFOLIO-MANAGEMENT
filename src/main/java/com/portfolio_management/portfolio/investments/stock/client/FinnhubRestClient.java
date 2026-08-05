@@ -13,7 +13,11 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
 import java.net.URI;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 @Component
@@ -110,17 +114,64 @@ public class FinnhubRestClient {
         );
     }
 
+    public List<FinnhubCandlePoint> getDailyPerformance(String symbol, int days) {
+        if (mockMode) {
+            return mockGetDailyPerformance(symbol, days);
+        }
+
+        long to = Instant.now().getEpochSecond();
+        long from = Instant.now().minusSeconds(60L * 60 * 24 * (days + 10L)).getEpochSecond();
+
+        JsonNode root = getJson(
+                "/stock/candle",
+                queryParam("symbol", symbol),
+                queryParam("resolution", "D"),
+                queryParam("from", String.valueOf(from)),
+                queryParam("to", String.valueOf(to))
+        );
+
+        if (!"ok".equalsIgnoreCase(root.path("s").asText())) {
+            throw new StockModuleException(HttpStatus.BAD_GATEWAY,
+                    "Finnhub did not return enough candle data for symbol " + symbol);
+        }
+
+        JsonNode closeNode = root.path("c");
+        JsonNode timeNode = root.path("t");
+        int size = Math.min(closeNode.size(), timeNode.size());
+        List<FinnhubCandlePoint> points = new ArrayList<>();
+
+        for (int i = 0; i < size; i++) {
+            BigDecimal close = closeNode.get(i).isNumber() ? closeNode.get(i).decimalValue() : BigDecimal.ZERO;
+            long epochSecond = timeNode.get(i).asLong(0L);
+            if (close.compareTo(BigDecimal.ZERO) <= 0 || epochSecond <= 0) {
+                continue;
+            }
+            points.add(new FinnhubCandlePoint(LocalDate.ofInstant(Instant.ofEpochSecond(epochSecond), ZoneOffset.UTC), close));
+        }
+
+        if (points.isEmpty()) {
+            throw new StockModuleException(HttpStatus.BAD_GATEWAY,
+                    "No valid candle points returned for symbol " + symbol);
+        }
+
+        points.sort(Comparator.comparing(FinnhubCandlePoint::date));
+        if (points.size() <= days) {
+            return points;
+        }
+        return points.subList(points.size() - days, points.size());
+    }
+
     private QueryParam queryParam(String name, String value) {
         return new QueryParam(name, value);
     }
 
-    private JsonNode getJson(String path, QueryParam primaryParam) {
+    private JsonNode getJson(String path, QueryParam... params) {
         try {
-            URI uri = UriComponentsBuilder.fromPath(path)
-                    .queryParam(primaryParam.name(), primaryParam.value())
-                    .queryParam("token", apiKey)
-                    .build(true)
-                    .toUri();
+            UriComponentsBuilder builder = UriComponentsBuilder.fromPath(path);
+            for (QueryParam param : params) {
+                builder.queryParam(param.name(), param.value());
+            }
+            URI uri = builder.queryParam("token", apiKey).build(true).toUri();
 
             String body = restClient.get()
                     .uri(uri)
@@ -222,6 +273,18 @@ public class FinnhubRestClient {
         };
     }
 
+    private List<FinnhubCandlePoint> mockGetDailyPerformance(String symbol, int days) {
+        List<FinnhubCandlePoint> points = new ArrayList<>();
+        BigDecimal base = mockGetQuote(symbol).currentPrice();
+        for (int i = days - 1; i >= 0; i--) {
+            LocalDate date = LocalDate.now(ZoneOffset.UTC).minusDays(i);
+            BigDecimal drift = BigDecimal.valueOf((days - i) * 0.35);
+            BigDecimal wave = BigDecimal.valueOf((i % 3) - 1).multiply(BigDecimal.valueOf(0.9));
+            points.add(new FinnhubCandlePoint(date, base.subtract(drift).add(wave).setScale(2, java.math.RoundingMode.HALF_UP)));
+        }
+        return points;
+    }
+
     public record FinnhubSearchItem(String symbol, String displaySymbol, String description, String type) {
     }
 
@@ -245,6 +308,12 @@ public class FinnhubRestClient {
             BigDecimal open,
             BigDecimal previousClose,
             Long timestamp
+    ) {
+    }
+
+    public record FinnhubCandlePoint(
+            LocalDate date,
+            BigDecimal closePrice
     ) {
     }
 }

@@ -57,6 +57,7 @@ public class StockTradingService {
     public TradeResponse buyStock(Long portfolioId, BuyStockRequest request) {
         String symbol = normalizeSymbol(request.symbol());
         BigDecimal quantity = scaleQuantity(request.quantity());
+        validatePositiveQuantity(quantity);
 
         PortfolioEntity portfolio = getPortfolio(portfolioId);
         FinnhubRestClient.FinnhubProfile profile = finnhubRestClient.getCompanyProfile(symbol);
@@ -123,6 +124,7 @@ public class StockTradingService {
     public TradeResponse sellStock(Long portfolioId, SellStockRequest request) {
         String symbol = normalizeSymbol(request.symbol());
         BigDecimal quantityToSell = scaleQuantity(request.quantity());
+        validatePositiveQuantity(quantityToSell);
 
         PortfolioEntity portfolio = getPortfolio(portfolioId);
         AssetEntity asset = assetRepository
@@ -240,6 +242,12 @@ public class StockTradingService {
 
     private BigDecimal safeQuantity(BigDecimal value) {
         return value == null ? ZERO : value;
+    }
+
+    private void validatePositiveQuantity(BigDecimal quantity) {
+        if (quantity.compareTo(ZERO) <= 0) {
+            throw new StockModuleException(HttpStatus.BAD_REQUEST, "quantity must be greater than zero");
+        }
     }
 }
 

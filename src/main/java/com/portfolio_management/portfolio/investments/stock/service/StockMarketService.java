@@ -4,6 +4,8 @@ import com.portfolio_management.portfolio.investments.stock.client.FinnhubRestCl
 import com.portfolio_management.portfolio.investments.stock.dto.CompanyDetailsResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.MarketplacePageResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.MarketplaceStockResponse;
+import com.portfolio_management.portfolio.investments.stock.dto.StockPerformancePointResponse;
+import com.portfolio_management.portfolio.investments.stock.dto.StockPerformanceResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockQuoteResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockSearchItemResponse;
 import com.portfolio_management.portfolio.investments.stock.exceptions.StockModuleException;
@@ -89,6 +91,16 @@ public class StockMarketService {
                 .toList();
 
         return new MarketplacePageResponse(safePage, safeSize, totalPages(safeSize), MARKET_SYMBOLS.size(), items);
+    }
+
+    public StockPerformanceResponse getPerformance(String symbol) {
+        String normalizedSymbol = normalizeSymbolOrQuery(symbol);
+        FinnhubRestClient.FinnhubProfile profile = finnhubRestClient.getCompanyProfile(normalizedSymbol);
+        List<StockPerformancePointResponse> points = finnhubRestClient.getDailyPerformance(normalizedSymbol, 10)
+                .stream()
+                .map(point -> new StockPerformancePointResponse(point.date(), point.closePrice()))
+                .toList();
+        return new StockPerformanceResponse(normalizedSymbol, profile.companyName(), points);
     }
 
     private StockQuoteResponse toQuoteResponse(FinnhubRestClient.FinnhubQuote quote) {

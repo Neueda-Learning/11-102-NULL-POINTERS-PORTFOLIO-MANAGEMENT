@@ -12,4 +12,6 @@ th, td { border: 1px solid #d7deea; padding: 6px; text-align: left; }
 th { background: #eef3ff; }
 .json { background: #0f172a; color: #d5e3ff; padding: 10px; border-radius: 6px; max-height: 260px; overflow: auto; }
 #wsStatus { font-weight: 700; margin-bottom: 8px; }
+#performanceChart { width: 100%; background: #ffffff; border: 1px solid #d7deea; border-radius: 6px; margin-top: 8px; }
+#performanceTitle { margin-bottom: 8px; font-weight: 600; }
 

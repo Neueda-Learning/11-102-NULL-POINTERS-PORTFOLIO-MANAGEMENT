@@ -43,9 +43,16 @@
             <button id="loadMarketplaceBtn">Load Page</button>
         </div>
         <table id="marketTable">
-            <thead><tr><th>Symbol</th><th>Name</th><th>Exchange</th><th>Price</th><th>Day %</th><th>Buy</th></tr></thead>
+            <thead><tr><th>Symbol</th><th>Name</th><th>Exchange</th><th>Price</th><th>Day %</th><th>Buy</th><th>View Performance</th></tr></thead>
             <tbody></tbody>
         </table>
+    </section>
+
+    <section class="card">
+        <h2>Marketplace Performance (Last 10 Days)</h2>
+        <div id="performanceTitle">Click "View Performance" from Marketplace.</div>
+        <canvas id="performanceChart" width="1000" height="320"></canvas>
+        <pre id="performanceData" class="json"></pre>
     </section>
 
     <section class="card">
@@ -62,7 +69,7 @@
     <section class="card">
         <h2>6) Holdings</h2>
         <table id="holdingsTable">
-            <thead><tr><th>Symbol</th><th>Shares</th><th>Avg Price</th><th>Current</th><th>Market Value</th><th>P/L</th><th>Details</th><th>Transactions</th><th>Subscribe</th></tr></thead>
+            <thead><tr><th>Symbol</th><th>Shares</th><th>Avg Price</th><th>Current</th><th>Market Value</th><th>P/L</th><th>Details</th><th>Transactions</th></tr></thead>
             <tbody></tbody>
         </table>
     </section>
@@ -81,16 +88,16 @@
         <pre id="txOutput" class="json"></pre>
     </section>
 
-    <section class="card">
-        <h2>9) Live Subscriptions + WebSocket</h2>
-        <div class="row">
-            <input id="subSymbols" placeholder="AAPL,TSLA,NVDA" />
-            <button id="subscribeBtn">Subscribe</button>
-            <button id="connectWsBtn">Connect WS</button>
-        </div>
-        <div id="wsStatus">WS: disconnected</div>
-        <pre id="liveOutput" class="json"></pre>
-    </section>
+<!--    <section class="card">-->
+<!--        <h2>9) Live Subscriptions + WebSocket</h2>-->
+<!--        <div class="row">-->
+<!--            <input id="subSymbols" placeholder="AAPL,TSLA,NVDA" />-->
+<!--            <button id="subscribeBtn">Subscribe</button>-->
+<!--            <button id="connectWsBtn">Connect WS</button>-->
+<!--        </div>-->
+<!--        <div id="wsStatus">WS: disconnected</div>-->
+<!--        <pre id="liveOutput" class="json"></pre>-->
+<!--    </section>-->
 
     <section class="card">
         <h2>Logs</h2>

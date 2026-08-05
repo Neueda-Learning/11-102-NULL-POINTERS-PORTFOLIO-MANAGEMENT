@@ -8,12 +8,11 @@ const api = {
 };
 
 const state = {
-  stomp: null,
   holdingsBySymbol: new Map()
 };
 
 const el = (id) => document.getElementById(id);
-const portfolioId = () => Number(el("portfolioId").value || 1);
+const portfolioId = () => Number(el("portfolioId")?.value || 1);
 
 function handleResponse(res) {
   return res.text().then((text) => {
@@ -28,22 +27,34 @@ function handleResponse(res) {
 function log(message, data) {
   const out = el("logOutput");
   const line = data ? `${message}\n${JSON.stringify(data, null, 2)}\n` : `${message}\n`;
+  if (!out) {
+    console.log(line);
+    return;
+  }
   out.textContent = `${line}${out.textContent}`;
 }
 
 function setJson(id, data) {
-  el(id).textContent = JSON.stringify(data, null, 2);
+  const target = el(id);
+  if (target) {
+    target.textContent = JSON.stringify(data, null, 2);
+  }
+}
+
+function bindClick(id, handler) {
+  const node = el(id);
+  if (node) {
+    node.addEventListener("click", handler);
+  }
 }
 
 function wireEvents() {
-  el("searchBtn").addEventListener("click", searchStocks);
-  el("loadMarketplaceBtn").addEventListener("click", loadMarketplace);
-  el("buyBtn").addEventListener("click", () => trade("buy"));
-  el("sellBtn").addEventListener("click", () => trade("sell"));
-  el("loadHoldingsBtn").addEventListener("click", loadHoldings);
-  el("loadTxBtn").addEventListener("click", loadTransactionsByInput);
-  el("subscribeBtn").addEventListener("click", subscribeSymbolsFromInput);
-  el("connectWsBtn").addEventListener("click", connectWs);
+  bindClick("searchBtn", searchStocks);
+  bindClick("loadMarketplaceBtn", loadMarketplace);
+  bindClick("buyBtn", () => trade("buy"));
+  bindClick("sellBtn", () => trade("sell"));
+  bindClick("loadHoldingsBtn", loadHoldings);
+  bindClick("loadTxBtn", loadTransactionsByInput);
 }
 
 async function searchStocks() {
@@ -54,8 +65,8 @@ async function searchStocks() {
     tbody.innerHTML = "";
     data.forEach((item) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${item.symbol}</td><td>${item.companyName}</td><td>${item.type}</td><td><button data-symbol="${item.symbol}">Details</button></td>`;
-      tr.querySelector("button").addEventListener("click", () => loadCompany(item.symbol));
+      tr.innerHTML = `<td>${item.symbol}</td><td>${item.companyName}</td><td>${item.type}</td><td><button class="details-btn">Details</button></td>`;
+      tr.querySelector(".details-btn").addEventListener("click", () => loadCompany(item.symbol));
       tbody.appendChild(tr);
     });
   } catch (err) {
@@ -84,16 +95,99 @@ async function loadMarketplace() {
 
     data.items.forEach((item) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${item.symbol}</td><td>${item.companyName}</td><td>${item.exchange}</td><td>${item.currentPrice}</td><td>${item.dailyChangePercent}</td><td><button data-symbol="${item.symbol}">Buy</button></td>`;
-      tr.querySelector("button").addEventListener("click", () => {
+      tr.innerHTML = `
+        <td>${item.symbol}</td>
+        <td>${item.companyName}</td>
+        <td>${item.exchange}</td>
+        <td>${item.currentPrice}</td>
+        <td>${item.dailyChangePercent}</td>
+        <td><button class="buy-btn">Buy</button></td>
+        <td><button class="perf-btn">View Performance</button></td>`;
+
+      tr.querySelector(".buy-btn").addEventListener("click", () => {
         el("tradeSymbol").value = item.symbol;
         el("tradeQuantity").focus();
       });
+
+      tr.querySelector(".perf-btn").addEventListener("click", () => {
+        loadPerformance(item.symbol);
+      });
+
       tbody.appendChild(tr);
     });
   } catch (err) {
     log("Marketplace failed", err.message);
   }
+}
+
+async function loadPerformance(symbol) {
+  try {
+    const data = await api.get(`/api/stocks/${encodeURIComponent(symbol)}/performance`);
+    setJson("performanceData", data);
+    const title = el("performanceTitle");
+    if (title) {
+      title.textContent = `${data.companyName} (${data.symbol}) - Last 10 Days`;
+    }
+    drawPerformanceChart(data.points || []);
+  } catch (err) {
+    log("Performance load failed", err.message);
+  }
+}
+
+function drawPerformanceChart(points) {
+  const canvas = el("performanceChart");
+  if (!canvas) {
+    return;
+  }
+  const ctx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  ctx.clearRect(0, 0, width, height);
+
+  if (!points.length) {
+    ctx.fillStyle = "#334155";
+    ctx.fillText("No performance data available", 20, 30);
+    return;
+  }
+
+  const prices = points.map((p) => Number(p.closePrice));
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const spread = Math.max(max - min, 1);
+
+  const padding = 36;
+  const plotWidth = width - padding * 2;
+  const plotHeight = height - padding * 2;
+
+  ctx.strokeStyle = "#cbd5e1";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding, padding);
+  ctx.lineTo(padding, height - padding);
+  ctx.lineTo(width - padding, height - padding);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#2563eb";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  points.forEach((point, index) => {
+    const x = padding + (index * plotWidth) / Math.max(points.length - 1, 1);
+    const y = padding + ((max - Number(point.closePrice)) / spread) * plotHeight;
+    if (index === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = "#0f172a";
+  ctx.font = "12px Arial";
+  ctx.fillText(`High: ${max.toFixed(2)}`, padding, 18);
+  ctx.fillText(`Low: ${min.toFixed(2)}`, width - 110, 18);
+  ctx.fillText(points[0].date, padding, height - 10);
+  ctx.fillText(points[points.length - 1].date, width - 92, height - 10);
 }
 
 async function trade(action) {
@@ -105,6 +199,7 @@ async function trade(action) {
     await loadHoldings();
   } catch (err) {
     log(`${action.toUpperCase()} failed`, err.message);
+    alert(err.message);
   }
 }
 
@@ -118,10 +213,9 @@ async function loadHoldings() {
     data.forEach((item) => {
       state.holdingsBySymbol.set(item.symbol, item);
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td data-sym="${item.symbol}">${item.symbol}</td><td>${item.shares}</td><td>${item.averagePurchasePrice}</td><td class="price">${item.currentPrice}</td><td class="mv">${item.marketValue}</td><td class="pl">${item.unrealizedProfitLoss}</td><td><button class="detail">Open</button></td><td><button class="tx">Open</button></td><td><button class="sub">Sub</button></td>`;
+      tr.innerHTML = `<td data-sym="${item.symbol}">${item.symbol}</td><td>${item.shares}</td><td>${item.averagePurchasePrice}</td><td class="price">${item.currentPrice}</td><td class="mv">${item.marketValue}</td><td class="pl">${item.unrealizedProfitLoss}</td><td><button class="detail">Open</button></td><td><button class="tx">Open</button></td>`;
       tr.querySelector(".detail").addEventListener("click", () => loadHoldingDetails(item.symbol));
       tr.querySelector(".tx").addEventListener("click", () => loadTransactions(item.symbol));
-      tr.querySelector(".sub").addEventListener("click", () => subscribeSymbols([item.symbol]));
       tbody.appendChild(tr);
     });
   } catch (err) {
@@ -149,89 +243,12 @@ async function loadTransactions(symbol) {
 
 async function loadTransactionsByInput() {
   const symbol = el("txSymbol").value.trim();
-  if (!symbol) return;
+  if (!symbol) {
+    return;
+  }
   await loadTransactions(symbol);
 }
 
-async function subscribeSymbols(symbols) {
-  try {
-    await api.post("/api/stocks/live/subscriptions", { symbols });
-    log("Subscribed symbols", symbols);
-    if (state.stomp && state.stomp.connected) {
-      symbols.forEach((s) => state.stomp.subscribe(`/topic/stocks/${s.toUpperCase()}`, (m) => onLiveMessage(JSON.parse(m.body))));
-    }
-  } catch (err) {
-    log("Subscribe API failed", err.message);
-  }
-}
-
-async function subscribeSymbolsFromInput() {
-  const symbols = el("subSymbols").value
-    .split(",")
-    .map((s) => s.trim().toUpperCase())
-    .filter(Boolean);
-
-  if (!symbols.length) return;
-  await subscribeSymbols(symbols);
-}
-
-function connectWs() {
-  if (!window.StompJs) {
-    log("STOMP library not loaded");
-    return;
-  }
-
-  if (state.stomp && state.stomp.connected) {
-    log("WebSocket already connected");
-    return;
-  }
-
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const brokerURL = `${protocol}://${window.location.host}/ws/stocks`;
-
-  state.stomp = new StompJs.Client({
-    brokerURL,
-    reconnectDelay: 3000,
-    onConnect: () => {
-      el("wsStatus").textContent = "WS: connected";
-      log("WS connected", { brokerURL });
-      state.stomp.subscribe("/topic/stocks/prices", (msg) => onLiveMessage(JSON.parse(msg.body)));
-    },
-    onStompError: (frame) => {
-      el("wsStatus").textContent = "WS: error";
-      log("WS STOMP error", frame);
-    },
-    onWebSocketClose: () => {
-      el("wsStatus").textContent = "WS: disconnected";
-    }
-  });
-
-  state.stomp.activate();
-}
-
-function onLiveMessage(update) {
-  setJson("liveOutput", update);
-  const symbol = update.symbol;
-  const price = Number(update.price);
-  const rows = [...el("holdingsTable").querySelectorAll("tbody tr")];
-  rows.forEach((row) => {
-    const sym = row.querySelector("td[data-sym]")?.getAttribute("data-sym");
-    if (sym !== symbol) return;
-
-    const holding = state.holdingsBySymbol.get(symbol);
-    if (!holding) return;
-
-    const shares = Number(holding.shares);
-    const avg = Number(holding.averagePurchasePrice);
-    const costBasis = shares * avg;
-    const marketValue = shares * price;
-    const pnl = marketValue - costBasis;
-
-    row.querySelector(".price").textContent = price.toFixed(2);
-    row.querySelector(".mv").textContent = marketValue.toFixed(2);
-    row.querySelector(".pl").textContent = pnl.toFixed(2);
-  });
-}
 
 wireEvents();
 
