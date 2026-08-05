@@ -7,8 +7,6 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.relational.core.mapping.Table;
 
-import java.time.LocalDateTime;
-
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -33,8 +31,5 @@ public class Asset {
 
     @Column("currency")
     private String currency;
-
-    @Column("created_at")
-    private LocalDateTime createdAt;
 }
 
