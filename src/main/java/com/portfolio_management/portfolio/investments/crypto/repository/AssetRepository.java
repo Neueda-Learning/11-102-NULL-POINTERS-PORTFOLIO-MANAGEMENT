@@ -8,7 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
-@Repository
+@Repository("cryptoAssetRepository")
 public interface AssetRepository extends CrudRepository<Asset, Long> {
 
     @Query("SELECT * FROM asset WHERE symbol = :symbol")

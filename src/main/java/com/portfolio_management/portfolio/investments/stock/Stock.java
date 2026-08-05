@@ -10,7 +10,7 @@ import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "stocks")
+@Table(name = "stock")
 public class Stock {
 
 	@Id
@@ -60,4 +60,3 @@ public class Stock {
 		this.sector = sector;
 	}
 }
-

@@ -8,7 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
-@Repository
+@Repository("cryptoTransactionRepository")
 public interface TransactionRepository extends CrudRepository<Transaction, Long> {
 
     /**
@@ -38,4 +38,5 @@ public interface TransactionRepository extends CrudRepository<Transaction, Long>
     @Query("SELECT * FROM transaction_history WHERE transaction_type = :type ORDER BY transaction_date DESC")
     List<Transaction> findByTransactionType(@Param("type") String type);
 }
+
 
