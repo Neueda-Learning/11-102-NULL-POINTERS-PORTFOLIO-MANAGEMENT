@@ -620,6 +620,7 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
+}
 
 /* â”€â”€ Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .settings-layout {

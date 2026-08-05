@@ -66,106 +66,124 @@ function navigateTo(section) {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────
 async function loadDashboard() {
+  await Promise.all([loadSummary(), loadAllocationChart(), loadPerformanceChart()]);
+}
+
+async function loadSummary() {
   try {
-    const cryptos = normalizeCryptos(await apiFetch('/api/v1/crypto'));
-    renderDashboardSummary(cryptos);
-    renderAllocationChart(cryptos);
-    renderPerformanceChart(cryptos);
+    const data = await apiFetch('/api/v1/portfolio/summary');
+    const pos = Number(data.totalReturns) >= 0;
+
+    document.getElementById('kpi-total-value').textContent = fmt(data.totalPortfolioValue);
+    document.getElementById('kpi-returns').textContent = (pos ? '+' : '') + fmt(data.totalReturns);
+    document.getElementById('kpi-returns-pct').textContent = `(${pos ? '+' : ''}${data.totalReturnsPercent}%)`;
+    document.getElementById('kpi-returns-pct').style.color = pos ? 'var(--success)' : 'var(--danger)';
+
+    document.getElementById('summary-cards').innerHTML = [
+      { label: 'Total Value', value: fmt(data.totalPortfolioValue), sub: '' },
+      { label: 'Total Invested', value: fmt(data.totalInvested), sub: '' },
+      { label: 'Total Returns', value: (pos ? '+' : '') + fmt(data.totalReturns), sub: `${pos ? '+' : ''}${data.totalReturnsPercent}%`, pos },
+      { label: 'Stocks Value', value: fmt(data.stocksValue), sub: `${data.stocksPercent}%` },
+      { label: 'Bonds Value', value: fmt(data.bondsValue), sub: `${data.bondsPercent}%` },
+      { label: 'Crypto Value', value: fmt(data.cryptoValue), sub: `${data.cryptoPercent}%` }
+    ].map(card => `
+      <div class="summary-card">
+        <div class="sc-label">${card.label}</div>
+        <div class="sc-value ${card.pos === true ? 'pos' : card.pos === false ? 'neg' : ''}">${card.value}</div>
+        ${card.sub ? `<div class="sc-sub">${card.sub}</div>` : ''}
+      </div>`).join('');
   } catch (error) {
-    console.error('Dashboard error', error);
-    document.getElementById('summary-cards').innerHTML = emptyState('Unable to load dashboard right now.');
-    document.getElementById('kpi-total-value').textContent = '—';
-    document.getElementById('kpi-returns').textContent = '—';
-    document.getElementById('kpi-returns-pct').textContent = '—';
+    console.error('Summary error', error);
   }
 }
 
-function renderDashboardSummary(cryptos) {
-  const active = cryptos.filter(item => Number(item.quantity) > 0);
-  const totalValue = sumBy(active, 'currentValue');
-  const totalInvested = sumBy(active, 'investedAmount');
-  const totalProfit = sumBy(active, 'profitLoss');
-  const returnsPct = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
-  const bestHolding = [...active].sort((a, b) => Number(b.currentValue || 0) - Number(a.currentValue || 0))[0];
-  const bestPerformer = [...active].sort((a, b) => Number(b.profitLoss || 0) - Number(a.profitLoss || 0))[0];
-  const pos = totalProfit >= 0;
+async function loadAllocationChart() {
+  try {
+    const summary = await apiFetch('/api/v1/portfolio/summary');
+    const ctx = document.getElementById('chart-allocation').getContext('2d');
 
-  document.getElementById('kpi-total-value').textContent = fmt(totalValue);
-  document.getElementById('kpi-returns').textContent = `${pos ? '+' : ''}${fmt(totalProfit)}`;
-  document.getElementById('kpi-returns-pct').textContent = `${pos ? '+' : ''}${returnsPct.toFixed(2)}%`;
-  document.getElementById('kpi-returns-pct').style.color = pos ? 'var(--success)' : 'var(--danger)';
+    if (allocationChart) allocationChart.destroy();
 
-  const cards = [
-    { label: 'Tracked Coins', value: cryptos.length, sub: `${active.length} active holding(s)` },
-    { label: 'Total Invested', value: fmt(totalInvested), sub: '' },
-    { label: 'Current Value', value: fmt(totalValue), sub: '' },
-    { label: 'Profit / Loss', value: `${pos ? '+' : ''}${fmt(totalProfit)}`, sub: `${pos ? '+' : ''}${returnsPct.toFixed(2)}%`, pos },
-    { label: 'Top Holding', value: bestHolding ? bestHolding.symbol : '—', sub: bestHolding ? fmt(bestHolding.currentValue) : 'No active holdings' },
-    { label: 'Best Performer', value: bestPerformer ? bestPerformer.symbol : '—', sub: bestPerformer ? fmt(bestPerformer.profitLoss) : 'No active holdings', pos: bestPerformer ? Number(bestPerformer.profitLoss) >= 0 : undefined }
-  ];
-
-  document.getElementById('summary-cards').innerHTML = cards.map(card => `
-    <div class="summary-card">
-      <div class="sc-label">${esc(card.label)}</div>
-      <div class="sc-value ${card.pos === true ? 'pos' : card.pos === false ? 'neg' : ''}">${typeof card.value === 'number' ? card.value : card.value}</div>
-      ${card.sub ? `<div class="sc-sub">${esc(card.sub)}</div>` : ''}
-    </div>
-  `).join('');
+    allocationChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Stocks', 'Bonds', 'Crypto'],
+        datasets: [{
+          data: [Number(summary.stocksValue || 0), Number(summary.bondsValue || 0), Number(summary.cryptoValue || 0)],
+          backgroundColor: ['#3b82f6', '#f59e0b', '#8b5cf6'],
+          borderColor: getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#fff',
+          borderWidth: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#000',
+              font: { size: 12 }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: context => ` $${Number(context.raw).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+            }
+          }
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Allocation chart error', error);
+  }
 }
 
-function renderAllocationChart(cryptos) {
-  const source = cryptos.filter(item => Number(item.currentValue) > 0);
-  const labels = (source.length ? source : cryptos.slice(0, 5)).map(item => item.symbol);
-  const values = (source.length ? source : cryptos.slice(0, 5)).map(item => Number(item.currentValue || item.currentPrice || 0));
-  const ctx = document.getElementById('chart-allocation').getContext('2d');
-  if (allocationChart) allocationChart.destroy();
-  allocationChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: labels.length ? labels : ['No Data'],
-      datasets: [{
-        data: values.length ? values : [1],
-        backgroundColor: ['#f59e0b', '#8b5cf6', '#3b82f6', '#06b6d4', '#ec4899', '#10b981'],
-        borderColor: getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#fff',
-        borderWidth: 3
-      }]
-    },
-    options: chartSharedOptions(false)
-  });
-}
+async function loadPerformanceChart() {
+  try {
+    const performance = await apiFetch('/api/v1/portfolio/performance-history');
+    const ctx = document.getElementById('chart-performance').getContext('2d');
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
+    const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
 
-function renderPerformanceChart(cryptos) {
-  const source = cryptos.filter(item => Number(item.quantity) > 0 || Number(item.currentValue) > 0).slice(0, 8);
-  const ctx = document.getElementById('chart-performance').getContext('2d');
-  if (performanceChart) performanceChart.destroy();
-  performanceChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: source.length ? source.map(item => item.symbol) : ['No Data'],
-      datasets: [
-        { label: 'Invested', data: source.length ? source.map(item => Number(item.investedAmount || 0)) : [0], backgroundColor: 'rgba(79,70,229,.55)', borderColor: '#4f46e5', borderWidth: 1 },
-        { label: 'Current Value', data: source.length ? source.map(item => Number(item.currentValue || 0)) : [0], backgroundColor: 'rgba(16,185,129,.55)', borderColor: '#10b981', borderWidth: 1 }
-      ]
-    },
-    options: chartSharedOptions(true)
-  });
-}
+    if (performanceChart) performanceChart.destroy();
 
-function chartSharedOptions(showLegend) {
-  const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#000';
-  const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#64748b';
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: showLegend, position: 'bottom', labels: { color: textColor } },
-      tooltip: { callbacks: { label: context => `${context.dataset?.label ? `${context.dataset.label}: ` : ''}${fmt(context.raw)}` } }
-    },
-    scales: showLegend ? {
-      x: { ticks: { color: mutedColor }, grid: { color: 'rgba(128,128,128,.08)' } },
-      y: { ticks: { color: mutedColor, callback: value => '$' + Number(value).toLocaleString('en-US') }, grid: { color: 'rgba(128,128,128,.08)' } }
-    } : undefined
-  };
+    performanceChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: performance.labels || [],
+        datasets: [{
+          label: 'Portfolio Value',
+          data: (performance.values || []).map(Number),
+          borderColor: '#4f46e5',
+          backgroundColor: 'rgba(79,70,229,.1)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.4,
+          pointRadius: 4,
+          pointBackgroundColor: '#4f46e5'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: context => ` $${Number(context.raw).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: mutedColor, maxRotation: 30 }, grid: { color: 'rgba(128,128,128,.1)' } },
+          y: { ticks: { color: mutedColor, callback: value => '$' + Number(value).toLocaleString() }, grid: { color: 'rgba(128,128,128,.1)' } }
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Performance chart error', error);
+  }
 }
 
 // ─── Holdings ─────────────────────────────────────────────────────────────
