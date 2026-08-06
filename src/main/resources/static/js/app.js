@@ -222,7 +222,7 @@ function scrollToDashboardLiveAlerts() {
 
 async function loadSummary() {
   try {
-    const data = await apiFetch('/api/v1/portfolio/summary');
+    const data = await apiFetch(withPortfolioId('/api/v1/portfolio/summary'));
     const pos = Number(data.totalReturns) >= 0;
 
     document.getElementById('kpi-total-value').textContent = fmt(data.totalPortfolioValue);
@@ -231,7 +231,9 @@ async function loadSummary() {
     document.getElementById('kpi-returns-pct').style.color = pos ? 'var(--success)' : 'var(--danger)';
 
     document.getElementById('summary-cards').innerHTML = [
-      { label: 'Total Value', value: fmt(data.totalPortfolioValue), sub: '' },
+    { label: 'Total Value', value: fmt(data.totalPortfolioValue), sub: '' },
+      { label: 'Available Cash', value: fmt(data.availableCash), sub: '' },
+
       { label: 'Total Invested', value: fmt(data.totalInvested), sub: '' },
       { label: 'Total Returns', value: (pos ? '+' : '') + fmt(data.totalReturns), sub: `${pos ? '+' : ''}${data.totalReturnsPercent}%`, pos },
       { label: 'Stocks Value', value: fmt(data.stocksValue), sub: `${data.stocksPercent}%` },
@@ -250,7 +252,7 @@ async function loadSummary() {
 
 async function loadAllocationChart() {
   try {
-    const summary = await apiFetch('/api/v1/portfolio/summary');
+    const summary = await apiFetch(withPortfolioId('/api/v1/portfolio/summary'));
     const ctx = document.getElementById('chart-allocation').getContext('2d');
 
     if (allocationChart) allocationChart.destroy();
@@ -292,7 +294,7 @@ async function loadAllocationChart() {
 
 async function loadPerformanceChart() {
   try {
-    const performance = await apiFetch('/api/v1/portfolio/performance-history');
+    const performance = await apiFetch(withPortfolioId('/api/v1/portfolio/performance-history'));
     const ctx = document.getElementById('chart-performance').getContext('2d');
     const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
     const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
@@ -352,7 +354,7 @@ async function loadHoldings(type = 'ALL') {
       return;
     }
 
-    const genericPromise = apiFetch(`/api/v1/portfolio/holdings?type=${type}`);
+    const genericPromise = apiFetch(withPortfolioId(`/api/v1/portfolio/holdings?type=${type}`));
 
     if (type === 'ALL') {
       const [genericResult, cryptoResult] = await Promise.allSettled([genericPromise, apiFetch('/api/v1/crypto')]);
@@ -1034,12 +1036,14 @@ async function submitAddAsset() {
       };
       if (!payload.symbol || !payload.name || payload.quantity == null || payload.buyPrice == null || payload.currentPrice == null)
         throw new Error('Please fill all crypto fields');
+      payload.portfolioId = DEFAULT_PORTFOLIO_ID;
       await apiFetch('/api/v1/crypto', { method: 'POST', body: JSON.stringify(payload) });
     } else if (type === 'STOCK') {
       const symbol = val('stock-symbol').toUpperCase();
       if (symbol) await autoFillStockFields(symbol);
       const payload = {
         type,
+        portfolioId: DEFAULT_PORTFOLIO_ID,
         symbol: val('stock-symbol'),
         assetName: val('stock-name'),
         quantity: val('stock-quantity'),
@@ -1052,6 +1056,7 @@ async function submitAddAsset() {
     } else {
       const payload = {
         type,
+        portfolioId: DEFAULT_PORTFOLIO_ID,
         issuer: val('bond-issuer'),
         interestRate: val('bond-rate'),
         amountInvested: val('bond-amount'),
@@ -1083,6 +1088,7 @@ async function submitAddAsset() {
     }, 700);
   } catch (error) {
     statusEl.innerHTML = `<span class="status-error">❌ ${esc(error.message)}</span>`;
+    setTradePreviewStatus(`❌ ${esc(error.message)}`, true);
     pushActionAlert(`Trade could not be completed: ${error.message}`, 'danger');
   } finally {
     btn.disabled = false;
@@ -1115,20 +1121,26 @@ function openSellModal(payload) {
     helpText.textContent = 'This records a SELL transaction and removes the asset from your portfolio.';
   }
   document.getElementById('sell-modal').classList.add('open');
+  const sellStatusEl = document.getElementById('sell-status');
+  if (sellStatusEl) sellStatusEl.innerHTML = '';
 }
 
 function closeSellModal() {
   pendingSell = null;
   document.getElementById('sell-modal').classList.remove('open');
   document.getElementById('sell-quantity').value = '';
+  const sellStatusEl = document.getElementById('sell-status');
+  if (sellStatusEl) sellStatusEl.innerHTML = '';
 }
 
 function reviewSellTrade() {
+  const sellStatusEl = document.getElementById('sell-status');
+  if (sellStatusEl) sellStatusEl.innerHTML = '';
   try {
     tradePreviewContext = buildSellTradePreview();
     openTradePreviewModal('Review Sell Summary', tradePreviewContext.html, 'Confirm Sell');
   } catch (error) {
-    pushActionAlert(error.message, 'warning');
+    if (sellStatusEl) sellStatusEl.innerHTML = `<span class="status-error">❌ ${esc(error.message)}</span>`;
   }
 }
 
@@ -1142,18 +1154,18 @@ async function confirmSell() {
       if (Number(quantity) > Number(pendingSell.quantity)) throw new Error('Sell quantity cannot exceed current holdings');
       await apiFetch('/api/v1/crypto', {
         method: 'POST',
-        body: JSON.stringify({ symbol: pendingSell.symbol, name: pendingSell.name, quantity, currentPrice: pendingSell.currentPrice, transactionType: 'SELL' })
+          body: JSON.stringify({ symbol: pendingSell.symbol, name: pendingSell.name, quantity, currentPrice: pendingSell.currentPrice, transactionType: 'SELL', portfolioId: DEFAULT_PORTFOLIO_ID })
       });
     } else if (pendingSell.type === 'STOCK') {
       const quantity = numberValue('sell-quantity');
       if (quantity == null || quantity <= 0) throw new Error('Enter a valid sell quantity');
       if (Number(quantity) > Number(pendingSell.quantity)) throw new Error(`Sell quantity cannot exceed available stocks: ${num(pendingSell.quantity, 4)}`);
-      await apiFetch(`/api/v1/portfolio/sell/${pendingSell.id}`, {
+      await apiFetch(withPortfolioId(`/api/v1/portfolio/sell/${pendingSell.id}`), {
         method: 'POST',
         body: JSON.stringify({ quantity })
       });
     } else {
-      await apiFetch(`/api/v1/portfolio/sell/${pendingSell.id}`, { method: 'POST' });
+      await apiFetch(withPortfolioId(`/api/v1/portfolio/sell/${pendingSell.id}`), { method: 'POST' });
     }
     closeTradePreviewModal();
     closeSellModal();
@@ -1170,6 +1182,7 @@ async function confirmSell() {
     if (alertResult.newCount > 0) setTimeout(scrollToDashboardLiveAlerts, 120);
     pushActionAlert('Sell completed. Alerts were checked right away.', 'warning', 7000);
   } catch (error) {
+    setTradePreviewStatus(`❌ ${esc(error.message)}`, true);
     pushActionAlert(`Sell failed: ${error.message}`, 'danger');
   }
 }
@@ -1178,10 +1191,12 @@ function openTradePreviewModal(title, contentHtml, actionLabel) {
   document.getElementById('trade-preview-title').textContent = title;
   document.getElementById('trade-preview-content').innerHTML = contentHtml;
   document.getElementById('trade-preview-confirm-btn').textContent = actionLabel;
+  setTradePreviewStatus('');
   document.getElementById('trade-preview-modal').classList.add('open');
 }
 
 function closeTradePreviewModal() {
+  setTradePreviewStatus('');
   document.getElementById('trade-preview-modal').classList.remove('open');
 }
 
@@ -1191,11 +1206,22 @@ function closeTradeReceiptModal() {
 
 async function confirmTradePreview() {
   if (!tradePreviewContext) return;
+  setTradePreviewStatus('');
   if (tradePreviewContext.kind === 'BUY') {
     await submitAddAsset();
   } else {
     await confirmSell();
   }
+}
+
+function setTradePreviewStatus(message, isError = false) {
+  const el = document.getElementById('trade-preview-status');
+  if (!el) return;
+  if (!message) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = `<span class="${isError ? 'status-error' : 'status-success'}">${message}</span>`;
 }
 
 async function buildAddTradePreview() {
@@ -1206,7 +1232,7 @@ async function buildAddTradePreview() {
     const quantity = numberValue('stock-quantity');
     const unitPrice = numberValue('stock-price');
     if (!symbol || !assetName || quantity == null || unitPrice == null) throw new Error('Please fill all stock fields');
-    const holdings = safeArray(await apiFetch('/api/v1/portfolio/holdings?type=STOCK'));
+    const holdings = safeArray(await apiFetch(withPortfolioId('/api/v1/portfolio/holdings?type=STOCK')));
     const existing = holdings.find(row => String(row.symbol || '').toUpperCase() === symbol);
     const existingQty = Number(existing?.quantity || 0);
     const existingAvg = Number(existing?.purchase_price || 0);
@@ -1671,8 +1697,8 @@ function evaluateAutomaticMarketAlerts(context) {
 }
 
 async function buildAlertContext(rules) {
-  const summary = await apiFetch('/api/v1/portfolio/summary').catch(() => ({}));
-  const genericHoldings = safeArray(await apiFetch('/api/v1/portfolio/holdings?type=ALL').catch(() => []));
+  const summary = await apiFetch(withPortfolioId('/api/v1/portfolio/summary')).catch(() => ({}));
+  const genericHoldings = safeArray(await apiFetch(withPortfolioId('/api/v1/portfolio/holdings?type=ALL')).catch(() => []));
   const stockHoldings = safeArray(await apiFetch(`/api/portfolios/${DEFAULT_PORTFOLIO_ID}/stocks/holdings`).catch(() => []));
   const cryptoHoldings = safeArray(await apiFetch('/api/v1/crypto').catch(() => []));
   const stockSymbols = [...new Set(rules.filter(rule => rule.assetType === 'STOCK').map(rule => rule.symbol).filter(Boolean))];
@@ -1875,6 +1901,11 @@ async function apiFetch(url, options = {}) {
   }
   if (response.status === 204) return {};
   return response.json();
+}
+
+function withPortfolioId(url, portfolioId = DEFAULT_PORTFOLIO_ID) {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}portfolioId=${encodeURIComponent(portfolioId)}`;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────

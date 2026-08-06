@@ -20,25 +20,62 @@ public class PortfolioService {
 
     // ─── Summary ────────────────────────────────────────────────────────────
     public Map<String, Object> getSummary() {
+        return getSummary(1L);
+    }
+
+    public Map<String, Object> getSummary(Long portfolioId) {
+        Long effectivePortfolioId = resolveOrCreatePortfolioId(portfolioId);
         BigDecimal bondsInvested = orZero(jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(amount_invested),0) FROM bonds", BigDecimal.class));
+                """
+                        SELECT COALESCE(SUM(b.amount_invested),0)
+                        FROM bonds b
+                        JOIN asset a ON a.asset_id = b.asset_id
+                        WHERE a.portfolio_id = ?
+                        """, BigDecimal.class, effectivePortfolioId));
         BigDecimal bondsValue = orZero(jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(amount_invested + (amount_invested * interest_rate * tenure_months / 1200)),0) FROM bonds", BigDecimal.class));
+                """
+                        SELECT COALESCE(SUM(b.amount_invested + (b.amount_invested * b.interest_rate * b.tenure_months / 1200)),0)
+                        FROM bonds b
+                        JOIN asset a ON a.asset_id = b.asset_id
+                        WHERE a.portfolio_id = ?
+                        """, BigDecimal.class, effectivePortfolioId));
 
         BigDecimal stocksInvested = orZero(jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(quantity*purchase_price),0) FROM stock", BigDecimal.class));
+                """
+                        SELECT COALESCE(SUM(s.quantity * s.purchase_price),0)
+                        FROM stock s
+                        JOIN asset a ON a.asset_id = s.asset_id
+                        WHERE a.portfolio_id = ?
+                        """, BigDecimal.class, effectivePortfolioId));
         BigDecimal stocksValue = orZero(jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(quantity*purchase_price),0) FROM stock", BigDecimal.class));
+                """
+                        SELECT COALESCE(SUM(s.quantity * s.purchase_price),0)
+                        FROM stock s
+                        JOIN asset a ON a.asset_id = s.asset_id
+                        WHERE a.portfolio_id = ?
+                        """, BigDecimal.class, effectivePortfolioId));
 
         BigDecimal cryptoInvested = orZero(jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(invested_amount),0) FROM crypto", BigDecimal.class));
+                """
+                        SELECT COALESCE(SUM(c.invested_amount),0)
+                        FROM crypto c
+                        JOIN asset a ON a.asset_id = c.asset_id
+                        WHERE a.portfolio_id = ?
+                        """, BigDecimal.class, effectivePortfolioId));
         BigDecimal cryptoValue = orZero(jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(current_value),0) FROM crypto", BigDecimal.class));
+                """
+                        SELECT COALESCE(SUM(c.current_value),0)
+                        FROM crypto c
+                        JOIN asset a ON a.asset_id = c.asset_id
+                        WHERE a.portfolio_id = ?
+                        """, BigDecimal.class, effectivePortfolioId));
+        BigDecimal availableCash = getPortfolioCashBalance(effectivePortfolioId);
 
-        BigDecimal totalPortfolioValue = bondsValue.add(stocksValue).add(cryptoValue);
+        BigDecimal holdingsValue = bondsValue.add(stocksValue).add(cryptoValue);
+        BigDecimal totalPortfolioValue = holdingsValue.add(availableCash);
         // Cost basis for currently open holdings only; avoids stale transaction effects.
         BigDecimal netInvested = bondsInvested.add(stocksInvested).add(cryptoInvested);
-        BigDecimal totalReturns = totalPortfolioValue.subtract(netInvested);
+        BigDecimal totalReturns = holdingsValue.subtract(netInvested);
         BigDecimal totalReturnsPercent = netInvested.compareTo(BigDecimal.ZERO) > 0
                 ? totalReturns.divide(netInvested, 6, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
                 : BigDecimal.ZERO;
@@ -57,11 +94,27 @@ public class PortfolioService {
         r.put("stocksPercent", pct(stocksValue, safeTotal));
         r.put("bondsPercent", pct(bondsValue, safeTotal));
         r.put("cryptoPercent", pct(cryptoValue, safeTotal));
+        r.put("availableCash", availableCash.setScale(2, RoundingMode.HALF_UP));
+        r.put("portfolioId", effectivePortfolioId);
         return r;
+    }
+
+    public Map<String, Object> getCashBalance(Long portfolioId) {
+        Long effectivePortfolioId = resolveOrCreatePortfolioId(portfolioId);
+        BigDecimal cash = getPortfolioCashBalance(effectivePortfolioId).setScale(2, RoundingMode.HALF_UP);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("portfolioId", effectivePortfolioId);
+        result.put("availableCash", cash);
+        return result;
     }
 
     // ─── Performance History ────────────────────────────────────────────────
     public Map<String, Object> getPerformanceHistory() {
+        return getPerformanceHistory(1L);
+    }
+
+    public Map<String, Object> getPerformanceHistory(Long portfolioId) {
+        Long effectivePortfolioId = resolveOrCreatePortfolioId(portfolioId);
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
                 SELECT
                     DATE(transaction_date) AS txn_date,
@@ -69,9 +122,10 @@ public class PortfolioService {
                         THEN transaction_price*quantity
                         ELSE -(transaction_price*quantity) END) AS net_amount
                 FROM transaction_history
+                WHERE portfolio_id = ?
                 GROUP BY DATE(transaction_date)
                 ORDER BY txn_date ASC
-                """);
+                """, effectivePortfolioId);
 
         List<String> labels = new ArrayList<>();
         List<BigDecimal> values = new ArrayList<>();
@@ -95,15 +149,20 @@ public class PortfolioService {
 
     // ─── Holdings ───────────────────────────────────────────────────────────
     public List<Map<String, Object>> getHoldings(String type) {
+        return getHoldings(1L, type);
+    }
+
+    public List<Map<String, Object>> getHoldings(Long portfolioId, String type) {
+        Long effectivePortfolioId = resolveOrCreatePortfolioId(portfolioId);
         List<Map<String, Object>> holdings = new ArrayList<>();
         String t = type != null ? type.toUpperCase() : "ALL";
-        if ("ALL".equals(t) || "STOCK".equals(t))  holdings.addAll(stockHoldings());
-        if ("ALL".equals(t) || "BOND".equals(t))   holdings.addAll(bondHoldings());
-        if ("ALL".equals(t) || "CRYPTO".equals(t)) holdings.addAll(cryptoHoldings());
+        if ("ALL".equals(t) || "STOCK".equals(t))  holdings.addAll(stockHoldings(effectivePortfolioId));
+        if ("ALL".equals(t) || "BOND".equals(t))   holdings.addAll(bondHoldings(effectivePortfolioId));
+        if ("ALL".equals(t) || "CRYPTO".equals(t)) holdings.addAll(cryptoHoldings(effectivePortfolioId));
         return holdings;
     }
 
-    private List<Map<String, Object>> stockHoldings() {
+    private List<Map<String, Object>> stockHoldings(Long portfolioId) {
         return jdbcTemplate.queryForList("""
                 SELECT a.asset_id, a.symbol, a.asset_name, a.currency,
                        s.quantity, s.purchase_price,
@@ -116,11 +175,12 @@ public class PortfolioService {
                 FROM asset a
                 JOIN stock s ON a.asset_id = s.asset_id
                 WHERE a.asset_type = 'STOCK'
+                  AND a.portfolio_id = ?
                   AND s.quantity > 0
-                """);
+                """, portfolioId);
     }
 
-    private List<Map<String, Object>> bondHoldings() {
+    private List<Map<String, Object>> bondHoldings(Long portfolioId) {
         return jdbcTemplate.queryForList("""
             SELECT a.asset_id, 
                    a.symbol, 
@@ -151,11 +211,12 @@ public class PortfolioService {
             FROM asset a
             JOIN bonds b ON a.asset_id = b.asset_id
             WHERE a.asset_type = 'BOND'
+              AND a.portfolio_id = ?
               AND b.amount_invested > 0
-            """);
+            """, portfolioId);
     }
 
-    private List<Map<String, Object>> cryptoHoldings() {
+    private List<Map<String, Object>> cryptoHoldings(Long portfolioId) {
         return jdbcTemplate.queryForList("""
                 SELECT a.asset_id, a.symbol, a.asset_name,
                        c.quantity, c.buy_price, c.current_price,
@@ -164,14 +225,15 @@ public class PortfolioService {
                 FROM asset a
                 JOIN crypto c ON a.asset_id = c.asset_id
                 WHERE a.asset_type = 'CRYPTO'
-                """);
+                  AND a.portfolio_id = ?
+                """, portfolioId);
     }
 
     // ─── Add Holding ─────────────────────────────────────────────────────────
     @Transactional
     public Map<String, Object> addHolding(Map<String, Object> request) {
         String type = ((String) request.get("type")).toUpperCase(Locale.ROOT);
-        Long portfolioId = resolveOrCreatePortfolioId();
+        Long portfolioId = resolveOrCreatePortfolioId(parsePortfolioId(request.get("portfolioId")));
         String assetName = (String) request.getOrDefault("assetName",
                 request.getOrDefault("issuer", request.getOrDefault("symbol", "ASSET")));
         String baseSymbol = String.valueOf(request.getOrDefault("symbol",
@@ -195,6 +257,7 @@ public class PortfolioService {
         switch (type) {
             case "BOND" -> {
                 BigDecimal amountInvested = bd(request.get("amountInvested"));
+                requireSufficientCash(portfolioId, amountInvested, "Insufficient cash balance for bond purchase");
                 BigDecimal interestRate = bd(request.get("interestRate"));
                 String startDate = (String) request.getOrDefault("startDate", LocalDate.now().toString());
                 int tenureMonths = Integer.parseInt(request.get("tenureMonths").toString());
@@ -203,6 +266,7 @@ public class PortfolioService {
                 jdbcTemplate.update(
                         "INSERT INTO bonds (asset_id, issuer, interest_rate, amount_invested, start_date, tenure_months, maturity_date) VALUES (?,?,?,?,?,?,?)",
                         assetId, issuer, interestRate, amountInvested, startDate, tenureMonths, maturityDate);
+                adjustPortfolioCashBalance(portfolioId, amountInvested.negate());
                 price = amountInvested;
             }
             case "CRYPTO" -> {
@@ -210,11 +274,13 @@ public class PortfolioService {
                 BigDecimal buyPrice = bd(request.get("buyPrice"));
                 BigDecimal currentPrice = bd(request.get("currentPrice"));
                 BigDecimal invested = quantity.multiply(buyPrice);
+                requireSufficientCash(portfolioId, invested, "Insufficient cash balance for crypto purchase");
                 BigDecimal currentValue = quantity.multiply(currentPrice);
                 BigDecimal pl = currentValue.subtract(invested);
                 jdbcTemplate.update(
                         "INSERT INTO crypto (asset_id, quantity, buy_price, current_price, invested_amount, current_value, profit_loss) VALUES (?,?,?,?,?,?,?)",
                         assetId, quantity, buyPrice, currentPrice, invested, currentValue, pl);
+                adjustPortfolioCashBalance(portfolioId, invested.negate());
                 price = buyPrice;
             }
         }
@@ -236,6 +302,8 @@ public class PortfolioService {
         String symbol = baseSymbol.isBlank() ? uniqueSymbol("STOCK", "STOCK") : baseSymbol;
         BigDecimal buyQty = bd(request.get("quantity"));
         BigDecimal buyPrice = bd(request.get("purchasePrice"));
+        BigDecimal totalCost = buyQty.multiply(buyPrice);
+        requireSufficientCash(portfolioId, totalCost, "Insufficient cash balance for stock purchase");
         String purchaseDate = (String) request.getOrDefault("purchaseDate", LocalDate.now().toString());
 
         List<Map<String, Object>> existing = jdbcTemplate.queryForList("""
@@ -259,8 +327,8 @@ public class PortfolioService {
 
             BigDecimal newAvgPrice = buyPrice;
             if (newQty.compareTo(BigDecimal.ZERO) > 0) {
-                BigDecimal totalCost = oldQty.multiply(oldPrice).add(buyQty.multiply(buyPrice));
-                newAvgPrice = totalCost.divide(newQty, 2, RoundingMode.HALF_UP);
+                BigDecimal weightedTotalCost = oldQty.multiply(oldPrice).add(buyQty.multiply(buyPrice));
+                newAvgPrice = weightedTotalCost.divide(newQty, 2, RoundingMode.HALF_UP);
             }
 
             jdbcTemplate.update(
@@ -290,6 +358,7 @@ public class PortfolioService {
         jdbcTemplate.update(
                 "INSERT INTO transaction_history (portfolio_id, asset_id, transaction_type, quantity, transaction_price, transaction_date) VALUES (?,?,'BUY',?,?,NOW())",
                 portfolioId, assetId, buyQty, buyPrice);
+        adjustPortfolioCashBalance(portfolioId, totalCost.negate());
 
         return Map.of("success", true, "assetId", assetId, "message", "STOCK added successfully");
     }
@@ -297,13 +366,19 @@ public class PortfolioService {
     // ─── Sell Holding ────────────────────────────────────────────────────────
     @Transactional
     public void sellHolding(Long assetId, BigDecimal requestedQuantity) {
+        sellHolding(1L, assetId, requestedQuantity);
+    }
+
+    @Transactional
+    public void sellHolding(Long portfolioId, Long assetId, BigDecimal requestedQuantity) {
+        Long effectivePortfolioId = resolveOrCreatePortfolioId(portfolioId);
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT * FROM asset WHERE asset_id = ?", assetId);
+                "SELECT * FROM asset WHERE asset_id = ? AND portfolio_id = ?", assetId, effectivePortfolioId);
         if (rows.isEmpty()) throw new RuntimeException("Asset not found: " + assetId);
 
         Map<String, Object> asset = rows.get(0);
         String assetType = (String) asset.get("asset_type");
-        Long portfolioId = ((Number) asset.get("portfolio_id")).longValue();
+        Long ownerPortfolioId = ((Number) asset.get("portfolio_id")).longValue();
 
         BigDecimal quantity = BigDecimal.ONE;
         BigDecimal price = BigDecimal.ZERO;
@@ -345,7 +420,9 @@ public class PortfolioService {
 
         jdbcTemplate.update(
                 "INSERT INTO transaction_history (portfolio_id, asset_id, transaction_type, quantity, transaction_price, transaction_date) VALUES (?,?,'SELL',?,?,NOW())",
-                portfolioId, assetId, quantity, price);
+                ownerPortfolioId, assetId, quantity, price);
+
+        adjustPortfolioCashBalance(ownerPortfolioId, quantity.multiply(price));
 
         if (deleteAsset) {
             jdbcTemplate.update("DELETE FROM asset WHERE asset_id=?", assetId);
@@ -354,6 +431,11 @@ public class PortfolioService {
 
     // ─── All Transactions ────────────────────────────────────────────────────
     public List<Map<String, Object>> getAllTransactions() {
+        return getAllTransactions(1L);
+    }
+
+    public List<Map<String, Object>> getAllTransactions(Long portfolioId) {
+        Long effectivePortfolioId = resolveOrCreatePortfolioId(portfolioId);
         return jdbcTemplate.queryForList("""
                 SELECT
                     th.transaction_id,
@@ -369,12 +451,23 @@ public class PortfolioService {
                     th.transaction_date
                 FROM transaction_history th
                 LEFT JOIN asset a ON a.asset_id = th.asset_id
+                WHERE th.portfolio_id = ?
                 ORDER BY th.transaction_date DESC
-                """);
+                """, effectivePortfolioId);
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
-    private Long resolveOrCreatePortfolioId() {
+    private Long resolveOrCreatePortfolioId(Long preferredId) {
+        if (preferredId != null) {
+            Integer exists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM portfolio WHERE portfolio_id = ?",
+                    Integer.class,
+                    preferredId
+            );
+            if (exists != null && exists > 0) {
+                return preferredId;
+            }
+        }
         List<Long> ids = jdbcTemplate.query(
                 "SELECT portfolio_id FROM portfolio ORDER BY portfolio_id LIMIT 1",
                 (rs, rn) -> rs.getLong(1));
@@ -383,6 +476,37 @@ public class PortfolioService {
                 "INSERT INTO portfolio (portfolio_name, description, cash_balance) VALUES (?,?,?)",
                 "Default Portfolio", "Auto-created", BigDecimal.ZERO);
         return jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
+
+    private void requireSufficientCash(Long portfolioId, BigDecimal required, String messagePrefix) {
+        BigDecimal available = getPortfolioCashBalance(portfolioId);
+        if (available.compareTo(required) < 0) {
+            throw new IllegalArgumentException(messagePrefix + ". Required: " + required.setScale(2, RoundingMode.HALF_UP)
+                    + ", available: " + available.setScale(2, RoundingMode.HALF_UP));
+        }
+    }
+
+    private BigDecimal getPortfolioCashBalance(Long portfolioId) {
+        return orZero(jdbcTemplate.queryForObject(
+                "SELECT cash_balance FROM portfolio WHERE portfolio_id = ?",
+                BigDecimal.class,
+                portfolioId
+        ));
+    }
+
+    private void adjustPortfolioCashBalance(Long portfolioId, BigDecimal delta) {
+        jdbcTemplate.update(
+                "UPDATE portfolio SET cash_balance = COALESCE(cash_balance,0) + ? WHERE portfolio_id = ?",
+                delta,
+                portfolioId
+        );
+    }
+
+    private Long parsePortfolioId(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        return Long.valueOf(raw.toString());
     }
 
     private String uniqueSymbol(String base, String type) {
