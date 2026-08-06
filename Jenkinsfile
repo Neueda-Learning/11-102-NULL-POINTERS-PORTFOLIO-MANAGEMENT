@@ -3,7 +3,7 @@ pipeline {
     agent any
 
     environment {
-        GIT_URL = 'https://github.com/<your-org>/Portfolio_project.git'
+        GIT_URL = 'https://github.com/Neueda-Learning/11-102-NULL-POINTERS-PORTFOLIO-MANAGEMENT.git'
         BRANCH  = 'main'
         APP_PORT = '8090'
         SERVER_PORT = '8085'
