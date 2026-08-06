@@ -54,7 +54,7 @@ docker compose --env-file .env up -d --build
 
 3. Open app:
 
-- `http://localhost:8080`
+- `http://localhost:8090`
 
 4. Stop containers:
 

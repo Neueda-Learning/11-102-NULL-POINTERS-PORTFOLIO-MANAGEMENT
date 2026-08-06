@@ -69,7 +69,7 @@ pipeline {
         stage('Smoke Check') {
             steps {
                 sh '''
-                    APP_PORT=${APP_PORT:-8080}
+                    APP_PORT=${APP_PORT:-8090}
                     for i in $(seq 1 30); do
                         if curl -fsS "http://localhost:${APP_PORT}/" >/dev/null 2>&1; then
                             echo "App is up and responding."

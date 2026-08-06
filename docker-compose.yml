@@ -34,7 +34,7 @@ services:
       mysql:
         condition: service_healthy
     environment:
-      SERVER_PORT: 8080
+      SERVER_PORT: 8085
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-portfolio}?allowPublicKeyRetrieval=true&useSSL=false
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-portfolio_user}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-portfolio_password}
@@ -44,7 +44,7 @@ services:
       FINNHUB_BASE_URL: ${FINNHUB_BASE_URL:-https://finnhub.io/api/v1}
       FINNHUB_WEBSOCKET_URL: ${FINNHUB_WEBSOCKET_URL:-wss://ws.finnhub.io}
     ports:
-      - "${APP_PORT:-8080}:8080"
+      - "${APP_PORT:-8090}:8085"
     networks:
       - portfolio-net
 
