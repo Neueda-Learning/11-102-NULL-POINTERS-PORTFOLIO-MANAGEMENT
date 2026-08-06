@@ -13,7 +13,8 @@ import com.portfolio_management.portfolio.investments.crypto.repository.AssetRep
 import com.portfolio_management.portfolio.investments.crypto.repository.CryptoRepository;
 import com.portfolio_management.portfolio.investments.crypto.repository.PortfolioRepository;
 import com.portfolio_management.portfolio.investments.crypto.repository.TransactionRepository;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,10 +23,12 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-@Slf4j
+
 @Service
 @Transactional
 public class FinnhubCryptoService implements CryptoService {
+
+    private static final Logger log = LoggerFactory.getLogger(FinnhubCryptoService.class);
 
     private static final Map<String, String> SYMBOL_NAME_MAP = new HashMap<>();
     static {
@@ -192,12 +195,55 @@ public class FinnhubCryptoService implements CryptoService {
     public List<CryptoResponseDTO> getCryptosBySymbols(List<String> symbols) {
         log.info("Fetching {} cryptocurrencies by symbols", symbols.size());
         return symbols.stream()
-                .flatMap(symbol -> assetRepository.findBySymbol(symbol.toUpperCase())
-                        .flatMap(asset -> cryptoRepository.findByAssetId(asset.getAssetId()))
-                        .stream())
-                .map(crypto -> refreshPriceAndMetrics(crypto, false))
-                .map(this::convertToDTO)
+                .map(this::buildMarketplaceSnapshot)
                 .collect(Collectors.toList());
+    }
+
+    private CryptoResponseDTO buildMarketplaceSnapshot(String symbol) {
+        String normalizedSymbol = symbol == null ? "" : symbol.toUpperCase().trim();
+        String displayName = assetRepository.findBySymbol(normalizedSymbol)
+                .map(Asset::getName)
+                .orElseGet(() -> SYMBOL_NAME_MAP.getOrDefault(normalizedSymbol, normalizedSymbol));
+
+        BigDecimal currentPrice = BigDecimal.ZERO;
+        BigDecimal change24h = BigDecimal.ZERO;
+        try {
+            CryptoPriceResponseDTO quote = finnhubClient.getCryptoQuote(normalizedSymbol);
+            if (quote != null && quote.getCurrentPrice() != null && quote.getCurrentPrice().compareTo(BigDecimal.ZERO) > 0) {
+                currentPrice = quote.getCurrentPrice();
+            }
+            if (quote != null && quote.getChange24h() != null) {
+                change24h = quote.getChange24h();
+            }
+        } catch (Exception ex) {
+            log.warn("Using fallback market snapshot for {} due to Finnhub fetch failure: {}", normalizedSymbol, ex.getMessage());
+        }
+
+        BigDecimal previousClose = currentPrice.subtract(change24h);
+        if (previousClose.compareTo(BigDecimal.ZERO) <= 0) {
+            previousClose = currentPrice;
+        }
+
+        BigDecimal trackedValue = currentPrice.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal investedAmount = previousClose.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal profitLoss = trackedValue.subtract(investedAmount).setScale(2, RoundingMode.HALF_UP);
+
+        Long cryptoId = assetRepository.findBySymbol(normalizedSymbol)
+                .flatMap(asset -> cryptoRepository.findByAssetId(asset.getAssetId()))
+                .map(Crypto::getCryptoId)
+                .orElse(null);
+
+        return new CryptoResponseDTO(
+                cryptoId,
+                normalizedSymbol,
+                displayName,
+                BigDecimal.ONE,
+                investedAmount,
+                currentPrice,
+                investedAmount,
+                trackedValue,
+                profitLoss
+        );
     }
 
     private Crypto refreshPriceAndMetrics(Crypto crypto, boolean failIfPriceUnavailable) {

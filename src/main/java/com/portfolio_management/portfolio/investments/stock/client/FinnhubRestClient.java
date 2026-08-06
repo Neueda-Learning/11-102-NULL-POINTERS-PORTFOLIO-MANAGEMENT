@@ -1,18 +1,20 @@
 package com.portfolio_management.portfolio.investments.stock.client;
 
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 import com.portfolio_management.portfolio.investments.stock.exceptions.StockModuleException;
-import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -28,28 +30,33 @@ public class FinnhubRestClient {
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final String baseUrl;
     private final String apiKey;
-    private final boolean mockMode;
 
     public FinnhubRestClient(
             @Value("${finnhub.base-url}") String baseUrl,
             @Value("${finnhub.api.key}") String apiKey,
-            @Value("${finnhub.mock-mode:false}") boolean mockMode,
             ObjectMapper objectMapper
     ) {
-        this.restClient = RestClient.builder().baseUrl(baseUrl).build();
-        this.objectMapper = objectMapper;
-        this.apiKey = apiKey;
-        this.mockMode = mockMode;
-        if (mockMode) {
-            log.info("⚠️ Finnhub MOCK MODE ENABLED - Using demo data instead of real API");
+        this.baseUrl = normalizeBaseUrl(baseUrl);
+        this.apiKey = apiKey == null ? "" : apiKey.trim();
+        if (this.apiKey.isBlank()) {
+            throw new IllegalStateException("finnhub.api.key is required for live market data.");
         }
+
+        HttpClient httpClient = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
+
+        this.restClient = RestClient.builder()
+                .requestFactory(new JdkClientHttpRequestFactory(httpClient))
+                .build();
+        this.objectMapper = objectMapper;
+
+        log.info("Finnhub REST client initialized in LIVE mode.");
     }
 
     public List<FinnhubSearchItem> searchStocks(String query, int limit) {
-        if (mockMode) {
-            return mockSearchStocks(query, limit);
-        }
         JsonNode root = getJson("/search", queryParam("q", query));
         JsonNode resultNode = root.path("result");
         List<FinnhubSearchItem> items = new ArrayList<>();
@@ -76,9 +83,6 @@ public class FinnhubRestClient {
     }
 
     public FinnhubProfile getCompanyProfile(String symbol) {
-        if (mockMode) {
-            return mockGetCompanyProfile(symbol);
-        }
         JsonNode root = getJson("/stock/profile2", queryParam("symbol", symbol));
         String ticker = root.path("ticker").asText(symbol);
         return new FinnhubProfile(
@@ -93,9 +97,6 @@ public class FinnhubRestClient {
     }
 
     public FinnhubQuote getQuote(String symbol) {
-        if (mockMode) {
-            return mockGetQuote(symbol);
-        }
         JsonNode root = getJson("/quote", queryParam("symbol", symbol));
         BigDecimal currentPrice = decimal(root, "c");
         if (currentPrice.compareTo(BigDecimal.ZERO) <= 0) {
@@ -116,10 +117,6 @@ public class FinnhubRestClient {
     }
 
     public List<FinnhubCandlePoint> getDailyPerformance(String symbol, int days) {
-        if (mockMode) {
-            return mockGetDailyPerformance(symbol, days);
-        }
-
         long to = Instant.now().getEpochSecond();
         long from = Instant.now().minusSeconds(60L * 60 * 24 * (days + 10L)).getEpochSecond();
 
@@ -214,7 +211,8 @@ public class FinnhubRestClient {
 
     private JsonNode getJson(String path, QueryParam... params) {
         try {
-            UriComponentsBuilder builder = UriComponentsBuilder.fromPath(path);
+            String normalizedPath = path.startsWith("/") ? path : "/" + path;
+            UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(baseUrl).path(normalizedPath);
             for (QueryParam param : params) {
                 builder.queryParam(param.name(), param.value());
             }
@@ -222,12 +220,35 @@ public class FinnhubRestClient {
 
             String body = restClient.get()
                     .uri(uri)
+                    .header("Accept", "application/json")
+                    .header("User-Agent", "portfolio-management/1.0")
                     .retrieve()
+                    .onStatus(status -> !status.is2xxSuccessful(), (req, resp) -> {
+                        int code = resp.getStatusCode().value();
+                        if (code == 401 || code == 403) {
+                            throw new StockModuleException(HttpStatus.BAD_GATEWAY,
+                                    "Finnhub rejected authentication (HTTP " + code + "). Check finnhub.api.key/quota.");
+                        }
+                        if (code == 429) {
+                            throw new StockModuleException(HttpStatus.TOO_MANY_REQUESTS,
+                                    "Finnhub rate limit exceeded (HTTP 429). Please retry shortly.");
+                        }
+                        throw new StockModuleException(HttpStatus.BAD_GATEWAY,
+                                "Finnhub API error: HTTP " + code);
+                    })
                     .body(String.class);
 
             if (body == null || body.isBlank()) {
                 throw new StockModuleException(HttpStatus.BAD_GATEWAY, "Finnhub returned an empty response");
             }
+            if (body.trim().charAt(0) == '<') {
+                log.warn("Finnhub returned non-JSON payload for path {}. Verify key/quota. Body prefix: {}",
+                        normalizedPath,
+                        body.substring(0, Math.min(body.length(), 120)).replace('\n', ' '));
+                throw new StockModuleException(HttpStatus.BAD_GATEWAY,
+                        "Finnhub returned HTML instead of JSON. Check API key/quota.");
+            }
+
             return objectMapper.readTree(body);
         } catch (StockModuleException ex) {
             throw ex;
@@ -255,81 +276,12 @@ public class FinnhubRestClient {
     private record QueryParam(String name, String value) {
     }
 
-    private List<FinnhubSearchItem> mockSearchStocks(String query, int limit) {
-        query = query.toUpperCase();
-        List<FinnhubSearchItem> items = new ArrayList<>();
-        String[][] data = {
-            {"AAPL", "AAPL", "Apple Inc", "Common Stock"},
-            {"TSLA", "TSLA", "Tesla Inc", "Common Stock"},
-            {"MSFT", "MSFT", "Microsoft Corporation", "Common Stock"},
-            {"GOOGL", "GOOGL", "Alphabet Inc", "Common Stock"},
-            {"AMZN", "AMZN", "Amazon.com Inc", "Common Stock"}
-        };
-        for (String[] row : data) {
-            if (row[0].contains(query) || row[2].toUpperCase().contains(query)) {
-                items.add(new FinnhubSearchItem(row[0], row[1], row[2], row[3]));
-                if (items.size() >= limit) break;
-            }
+    private String normalizeBaseUrl(String rawBaseUrl) {
+        if (rawBaseUrl == null || rawBaseUrl.isBlank()) {
+            throw new IllegalStateException("finnhub.base-url is required for live market data.");
         }
-        return items;
-    }
-
-    private FinnhubProfile mockGetCompanyProfile(String symbol) {
-        return switch (symbol.toUpperCase()) {
-            case "AAPL" -> new FinnhubProfile("AAPL", "Apple Inc", "NASDAQ", "US", "Technology", "USD", "https://www.apple.com");
-            case "TSLA" -> new FinnhubProfile("TSLA", "Tesla Inc", "NASDAQ", "US", "Consumer Cyclical", "USD", "https://www.tesla.com");
-            case "MSFT" -> new FinnhubProfile("MSFT", "Microsoft Corporation", "NASDAQ", "US", "Technology", "USD", "https://www.microsoft.com");
-            case "GOOGL" -> new FinnhubProfile("GOOGL", "Alphabet Inc", "NASDAQ", "US", "Communication Services", "USD", "https://www.google.com");
-            case "AMZN" -> new FinnhubProfile("AMZN", "Amazon.com Inc", "NASDAQ", "US", "Consumer Cyclical", "USD", "https://www.amazon.com");
-            default -> new FinnhubProfile(symbol, symbol + " Corp", "NASDAQ", "US", "Technology", "USD", "https://company.com");
-        };
-    }
-
-    private FinnhubQuote mockGetQuote(String symbol) {
-        return switch (symbol.toUpperCase()) {
-            case "AAPL" -> new FinnhubQuote(
-                new java.math.BigDecimal("192.11"),
-                new java.math.BigDecimal("1.22"),
-                new java.math.BigDecimal("0.64"),
-                new java.math.BigDecimal("193.00"),
-                new java.math.BigDecimal("189.71"),
-                new java.math.BigDecimal("190.20"),
-                new java.math.BigDecimal("190.89"),
-                System.currentTimeMillis() / 1000
-            );
-            case "TSLA" -> new FinnhubQuote(
-                new java.math.BigDecimal("245.50"),
-                new java.math.BigDecimal("-2.15"),
-                new java.math.BigDecimal("-0.87"),
-                new java.math.BigDecimal("248.99"),
-                new java.math.BigDecimal("244.00"),
-                new java.math.BigDecimal("247.80"),
-                new java.math.BigDecimal("247.65"),
-                System.currentTimeMillis() / 1000
-            );
-            default -> new FinnhubQuote(
-                new java.math.BigDecimal("150.00"),
-                new java.math.BigDecimal("0.00"),
-                new java.math.BigDecimal("0.00"),
-                new java.math.BigDecimal("150.50"),
-                new java.math.BigDecimal("149.50"),
-                new java.math.BigDecimal("149.75"),
-                new java.math.BigDecimal("150.00"),
-                System.currentTimeMillis() / 1000
-            );
-        };
-    }
-
-    private List<FinnhubCandlePoint> mockGetDailyPerformance(String symbol, int days) {
-        List<FinnhubCandlePoint> points = new ArrayList<>();
-        BigDecimal base = mockGetQuote(symbol).currentPrice();
-        for (int i = days - 1; i >= 0; i--) {
-            LocalDate date = LocalDate.now(ZoneOffset.UTC).minusDays(i);
-            BigDecimal drift = BigDecimal.valueOf((days - i) * 0.35);
-            BigDecimal wave = BigDecimal.valueOf((i % 3) - 1).multiply(BigDecimal.valueOf(0.9));
-            points.add(new FinnhubCandlePoint(date, base.subtract(drift).add(wave).setScale(2, java.math.RoundingMode.HALF_UP)));
-        }
-        return points;
+        String trimmed = rawBaseUrl.trim();
+        return trimmed.endsWith("/") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
     }
 
     private List<FinnhubNewsItem> mockGetCompanyNews(String symbol, int limit) {
@@ -383,5 +335,4 @@ public class FinnhubRestClient {
     ) {
     }
 }
-
 
