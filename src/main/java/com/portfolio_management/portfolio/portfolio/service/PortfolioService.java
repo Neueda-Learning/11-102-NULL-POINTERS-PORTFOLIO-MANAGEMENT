@@ -116,6 +116,7 @@ public class PortfolioService {
                 FROM asset a
                 JOIN stock s ON a.asset_id = s.asset_id
                 WHERE a.asset_type = 'STOCK'
+                  AND s.quantity > 0
                 """);
     }
 
@@ -168,14 +169,19 @@ public class PortfolioService {
     // ─── Add Holding ─────────────────────────────────────────────────────────
     @Transactional
     public Map<String, Object> addHolding(Map<String, Object> request) {
-        String type = ((String) request.get("type")).toUpperCase();
+        String type = ((String) request.get("type")).toUpperCase(Locale.ROOT);
         Long portfolioId = resolveOrCreatePortfolioId();
         String assetName = (String) request.getOrDefault("assetName",
                 request.getOrDefault("issuer", request.getOrDefault("symbol", "ASSET")));
-        String baseSymbol = (String) request.getOrDefault("symbol",
-                assetName.replaceAll("[^A-Za-z0-9]", "").toUpperCase());
-        String symbol = uniqueSymbol(baseSymbol, type);
+        String baseSymbol = String.valueOf(request.getOrDefault("symbol",
+                assetName.replaceAll("[^A-Za-z0-9]", ""))).trim().toUpperCase(Locale.ROOT);
         String currency = (String) request.getOrDefault("currency", "USD");
+
+        if ("STOCK".equals(type)) {
+            return upsertStockHolding(request, portfolioId, assetName, baseSymbol, currency);
+        }
+
+        String symbol = uniqueSymbol(baseSymbol, type);
 
         jdbcTemplate.update(
                 "INSERT INTO asset (portfolio_id, asset_type, asset_name, symbol, currency) VALUES (?,?,?,?,?)",
@@ -186,14 +192,6 @@ public class PortfolioService {
         BigDecimal price = BigDecimal.ZERO;
 
         switch (type) {
-            case "STOCK" -> {
-                quantity = bd(request.get("quantity"));
-                price = bd(request.get("purchasePrice"));
-                String purchaseDate = (String) request.getOrDefault("purchaseDate", LocalDate.now().toString());
-                jdbcTemplate.update(
-                        "INSERT INTO stock (asset_id, quantity, purchase_price, purchase_date) VALUES (?,?,?,?)",
-                        assetId, quantity, price, purchaseDate);
-            }
             case "BOND" -> {
                 BigDecimal amountInvested = bd(request.get("amountInvested"));
                 BigDecimal interestRate = bd(request.get("interestRate"));
@@ -227,9 +225,77 @@ public class PortfolioService {
         return Map.of("success", true, "assetId", assetId, "message", type + " added successfully");
     }
 
+    @Transactional
+    protected Map<String, Object> upsertStockHolding(
+            Map<String, Object> request,
+            Long portfolioId,
+            String assetName,
+            String baseSymbol,
+            String currency) {
+        String symbol = baseSymbol.isBlank() ? uniqueSymbol("STOCK", "STOCK") : baseSymbol;
+        BigDecimal buyQty = bd(request.get("quantity"));
+        BigDecimal buyPrice = bd(request.get("purchasePrice"));
+        String purchaseDate = (String) request.getOrDefault("purchaseDate", LocalDate.now().toString());
+
+        List<Map<String, Object>> existing = jdbcTemplate.queryForList("""
+                SELECT a.asset_id, s.quantity, s.purchase_price
+                FROM asset a
+                JOIN stock s ON a.asset_id = s.asset_id
+                WHERE a.portfolio_id = ?
+                  AND a.asset_type = 'STOCK'
+                  AND UPPER(a.symbol) = ?
+                LIMIT 1
+                """, portfolioId, symbol);
+
+        Long assetId;
+        if (!existing.isEmpty()) {
+            Map<String, Object> row = existing.get(0);
+            assetId = ((Number) row.get("asset_id")).longValue();
+
+            BigDecimal oldQty = bd(row.get("quantity"));
+            BigDecimal oldPrice = bd(row.get("purchase_price"));
+            BigDecimal newQty = oldQty.add(buyQty);
+
+            BigDecimal newAvgPrice = buyPrice;
+            if (newQty.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal totalCost = oldQty.multiply(oldPrice).add(buyQty.multiply(buyPrice));
+                newAvgPrice = totalCost.divide(newQty, 2, RoundingMode.HALF_UP);
+            }
+
+            jdbcTemplate.update(
+                    "UPDATE stock SET quantity=?, purchase_price=?, purchase_date=? WHERE asset_id=?",
+                    newQty, newAvgPrice, purchaseDate, assetId);
+            jdbcTemplate.update(
+                    "UPDATE asset SET asset_name=?, currency=? WHERE asset_id=?",
+                    assetName, currency, assetId);
+        } else {
+            boolean symbolTaken = Optional.ofNullable(jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM asset WHERE UPPER(symbol)=?", Integer.class, symbol))
+                    .orElse(0) > 0;
+            if (symbolTaken) {
+                symbol = uniqueSymbol(symbol, "STOCK");
+            }
+
+            jdbcTemplate.update(
+                    "INSERT INTO asset (portfolio_id, asset_type, asset_name, symbol, currency) VALUES (?,?,?,?,?)",
+                    portfolioId, "STOCK", assetName, symbol, currency);
+            assetId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+
+            jdbcTemplate.update(
+                    "INSERT INTO stock (asset_id, quantity, purchase_price, purchase_date) VALUES (?,?,?,?)",
+                    assetId, buyQty, buyPrice, purchaseDate);
+        }
+
+        jdbcTemplate.update(
+                "INSERT INTO transaction_history (portfolio_id, asset_id, transaction_type, quantity, transaction_price, transaction_date) VALUES (?,?,'BUY',?,?,NOW())",
+                portfolioId, assetId, buyQty, buyPrice);
+
+        return Map.of("success", true, "assetId", assetId, "message", "STOCK added successfully");
+    }
+
     // ─── Sell Holding ────────────────────────────────────────────────────────
     @Transactional
-    public void sellHolding(Long assetId) {
+    public void sellHolding(Long assetId, BigDecimal requestedQuantity) {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT * FROM asset WHERE asset_id = ?", assetId);
         if (rows.isEmpty()) throw new RuntimeException("Asset not found: " + assetId);
@@ -240,12 +306,27 @@ public class PortfolioService {
 
         BigDecimal quantity = BigDecimal.ONE;
         BigDecimal price = BigDecimal.ZERO;
+        boolean deleteAsset = true;
 
         switch (assetType) {
             case "STOCK" -> {
                 Map<String, Object> s = jdbcTemplate.queryForMap("SELECT * FROM stock WHERE asset_id=?", assetId);
-                quantity = bd(s.get("quantity"));
+                BigDecimal currentQty = bd(s.get("quantity"));
+                BigDecimal sellQty = requestedQuantity == null ? currentQty : requestedQuantity;
+                if (sellQty.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new RuntimeException("Sell quantity must be greater than 0");
+                }
+                if (sellQty.compareTo(currentQty) > 0) {
+                    throw new RuntimeException("Sell quantity cannot exceed available stocks: " + currentQty.stripTrailingZeros().toPlainString());
+                }
+
+                quantity = sellQty;
                 price = bd(s.get("purchase_price"));
+
+                BigDecimal remaining = currentQty.subtract(sellQty);
+                // Keep the asset row so historical transactions continue to resolve symbol/name.
+                jdbcTemplate.update("UPDATE stock SET quantity=? WHERE asset_id=?", remaining, assetId);
+                deleteAsset = false;
             }
             case "BOND" -> {
                 Map<String, Object> b = jdbcTemplate.queryForMap("SELECT * FROM bonds WHERE asset_id=?", assetId);
@@ -262,7 +343,9 @@ public class PortfolioService {
                 "INSERT INTO transaction_history (portfolio_id, asset_id, transaction_type, quantity, transaction_price, transaction_date) VALUES (?,?,'SELL',?,?,NOW())",
                 portfolioId, assetId, quantity, price);
 
-        jdbcTemplate.update("DELETE FROM asset WHERE asset_id=?", assetId);
+        if (deleteAsset) {
+            jdbcTemplate.update("DELETE FROM asset WHERE asset_id=?", assetId);
+        }
     }
 
     // ─── All Transactions ────────────────────────────────────────────────────

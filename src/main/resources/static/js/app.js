@@ -248,7 +248,7 @@ function buildStocksTable(rows) {
       <td>${fmt(row.market_value)}</td>
       <td class="${plPct >= 0 ? 'pos' : 'neg'}">${plPct >= 0 ? '+' : ''}${plPct.toFixed(2)}%</td>
       <td><button class="detail-btn" onclick="showStockTransactions('${escJs(row.symbol)}')">Details</button></td>
-      <td><button class="sell-btn" onclick='openSellModal(${json({ id: row.asset_id, name: row.asset_name, type: "GENERIC" })})'>Sell</button></td>
+      <td><button class="sell-btn" onclick='openSellModal(${json({ id: row.asset_id, symbol: row.symbol, name: row.asset_name, quantity: row.quantity, type: "STOCK" })})'>Sell</button></td>
     </tr>`;
   }).join('');
   return `<table class="data-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
@@ -293,9 +293,7 @@ function buildCryptoTable(rows) {
       <td>
         <div class="action-group">
           <button class="detail-btn" onclick="showCryptoDetails(${row.cryptoId})">Details</button>
-          <button class="detail-btn" onclick="refreshCryptoPrice('${escJs(row.symbol)}')">Refresh</button>
           <button class="sell-btn" onclick='openSellModal(${json({ cryptoId: row.cryptoId, symbol: row.symbol, name: row.name, quantity: row.quantity, buyPrice: row.buyPrice, currentPrice: row.currentPrice, type: "CRYPTO" })})'>Sell</button>
-          <button class="detail-btn danger-outline" onclick="deleteCryptoHolding(${row.cryptoId}, '${escJs(row.name || row.symbol)}')">Delete</button>
         </div>
       </td>
     </tr>`;
@@ -330,8 +328,9 @@ async function loadMarketplace() {
 
   pagerRow.style.display = isStock ? 'flex' : 'none';
   if (cryptoToolbar) cryptoToolbar.style.display = isCrypto ? 'flex' : 'none';
-  container.style.display = isCrypto ? 'none' : '';
-  marketGrid.style.display = isCrypto ? '' : 'none';
+  // Keep a single table container for STOCK/BOND/CRYPTO marketplace views.
+  container.style.display = '';
+  marketGrid.style.display = 'none';
 
   try {
     if (isStock) {
@@ -342,14 +341,14 @@ async function loadMarketplace() {
       container.innerHTML = buildMarketplaceStocksTable(data.items || []);
       statusEl.innerHTML = `<span class="status-success">✅ ${data.items?.length || 0} stock(s) loaded</span>`;
     } else if (isCrypto) {
-      marketGrid.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;">Refreshing market data...</p>';
+      container.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;">Refreshing market data...</p>';
       await refreshMarketplacePrices(true);
       const marketData = normalizeCryptos(await apiFetch('/api/v1/crypto/batch', {
         method: 'POST',
         body: JSON.stringify(CRYPTO_MARKET_SYMBOLS)
       }));
       const sorted = [...marketData].sort((a, b) => Number(b.currentPrice || 0) - Number(a.currentPrice || 0));
-      marketGrid.innerHTML = sorted.length ? buildMarketplaceCards(sorted) : emptyState('No marketplace crypto data available.');
+      container.innerHTML = sorted.length ? buildMarketplaceCryptoMarketTable(sorted) : emptyState('No marketplace crypto data available.');
       statusEl.innerHTML = `<span class="status-success">✅ ${sorted.length} crypto asset(s) loaded</span>`;
     } else {
       // BOND — use dummy market data
@@ -357,9 +356,36 @@ async function loadMarketplace() {
       statusEl.innerHTML = `<span class="status-success">✅ ${DUMMY_BOND_MARKET.length} bond(s) loaded</span>`;
     }
   } catch (e) {
-    const target = isCrypto ? marketGrid : container;
-    target.innerHTML = `<p class="status-error">❌ Failed: ${esc(e.message)}</p>`;
+    container.innerHTML = `<p class="status-error">❌ Failed: ${esc(e.message)}</p>`;
   }
+}
+
+function buildMarketplaceCryptoMarketTable(rows) {
+  const head = `<tr>
+    <th>Symbol</th><th>Name</th><th>Type</th>
+    <th>Current Price</th><th>Tracked Value</th><th>P/L</th><th>Actions</th></tr>`;
+
+  const body = rows.map(row => {
+    const profit = Number(row.profitLoss || 0);
+    const profitClass = profit >= 0 ? 'pos' : 'neg';
+    return `<tr>
+      <td><strong>${esc(row.symbol)}</strong></td>
+      <td>${esc(row.name)}</td>
+      <td><span class="badge badge-crypto">CRYPTO</span></td>
+      <td>${fmt(row.currentPrice)}</td>
+      <td>${fmt(row.currentValue)}</td>
+      <td class="${profitClass}">${profit >= 0 ? '+' : ''}${fmt(profit)}</td>
+      <td>
+        <div class="action-group">
+          <button class="btn btn-secondary btn-sm" onclick="showCryptoDetails(${row.cryptoId})">Details</button>
+          <button class="btn btn-secondary btn-sm" onclick="refreshCryptoPrice('${escJs(row.symbol)}', true)">Refresh</button>
+          <button class="btn btn-primary btn-sm" onclick='openAddModal("CRYPTO", ${json({ symbol: row.symbol, name: row.name, currentPrice: row.currentPrice })})'>Buy</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `<table class="data-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 
 function changeMarketplacePage(delta) {
@@ -543,14 +569,13 @@ async function loadTransactions() {
     const rows = safeArray(await apiFetch('/api/v1/transactions/history'));
     if (!rows.length) { container.innerHTML = emptyState('No transactions yet.'); return; }
     const head = `<tr>
-      <th>#</th><th>Portfolio</th><th>Symbol</th><th>Name</th>
+      <th>#</th><th>Symbol</th><th>Name</th>
       <th>Type</th><th>Quantity</th><th>Price</th><th>Total</th><th>Date & Time</th></tr>`;
     const body = rows.map(row => {
       const isBuy = row.transactionType === 'BUY';
       const total = Number(row.quantity || 0) * Number(row.transactionPrice || 0);
       return `<tr>
         <td>${esc(row.transactionId)}</td>
-        <td>${esc(row.portfolioId)}</td>
         <td><strong>${esc(row.symbol)}</strong></td>
         <td>${esc(row.name)}</td>
         <td><span class="badge ${isBuy ? 'badge-buy' : 'badge-sell'}">${esc(row.transactionType)}</span></td>
@@ -779,6 +804,11 @@ function openSellModal(payload) {
     quantityInput.value = payload.quantity != null ? payload.quantity : '';
     quantityHelp.textContent = `Available quantity: ${num(payload.quantity, 8)} ${payload.symbol}`;
     helpText.textContent = 'This uses the crypto BUY/SELL backend and deducts only the quantity you enter.';
+  } else if (payload.type === 'STOCK') {
+    cryptoFields.style.display = 'block';
+    quantityInput.value = payload.quantity != null ? payload.quantity : '';
+    quantityHelp.textContent = `Available stocks: ${num(payload.quantity, 4)} ${payload.symbol || ''}`.trim();
+    helpText.textContent = 'Enter how many stocks to sell. Selling all removes the holding from the list.';
   } else {
     cryptoFields.style.display = 'none';
     quantityInput.value = '';
@@ -804,6 +834,14 @@ async function confirmSell() {
       await apiFetch('/api/v1/crypto', {
         method: 'POST',
         body: JSON.stringify({ symbol: pendingSell.symbol, name: pendingSell.name, quantity, currentPrice: pendingSell.currentPrice, transactionType: 'SELL' })
+      });
+    } else if (pendingSell.type === 'STOCK') {
+      const quantity = numberValue('sell-quantity');
+      if (quantity == null || quantity <= 0) throw new Error('Enter a valid sell quantity');
+      if (Number(quantity) > Number(pendingSell.quantity)) throw new Error(`Sell quantity cannot exceed available stocks: ${num(pendingSell.quantity, 4)}`);
+      await apiFetch(`/api/v1/portfolio/sell/${pendingSell.id}`, {
+        method: 'POST',
+        body: JSON.stringify({ quantity })
       });
     } else {
       await apiFetch(`/api/v1/portfolio/sell/${pendingSell.id}`, { method: 'POST' });

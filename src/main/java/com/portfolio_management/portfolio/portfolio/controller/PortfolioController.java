@@ -40,8 +40,12 @@ public class PortfolioController {
 
     @PostMapping("/sell/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void sellHolding(@PathVariable Long id) {
-        portfolioService.sellHolding(id);
+    public void sellHolding(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> request) {
+        java.math.BigDecimal quantity = null;
+        if (request != null && request.get("quantity") != null) {
+            quantity = new java.math.BigDecimal(request.get("quantity").toString());
+        }
+        portfolioService.sellHolding(id, quantity);
     }
 
     @GetMapping("/transactions")
