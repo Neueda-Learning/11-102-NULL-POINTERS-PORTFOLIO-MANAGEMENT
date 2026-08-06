@@ -1851,7 +1851,42 @@ function evaluateAutomaticMarketAlerts(context) {
     ));
   }
 
+  // Show top 2 nearest bond maturities as dashboard alerts.
+  systemEvents.push(...buildNearestBondMaturityAlerts(context, dayKey, 2));
+
   return systemEvents;
+}
+
+function buildNearestBondMaturityAlerts(context, dayKey, limit = 2) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const nearest = safeArray(context.genericHoldings)
+    .filter(item => item.asset_type === 'BOND' && item.maturity_date)
+    .map(item => {
+      const maturityIso = String(item.maturity_date).slice(0, 10);
+      const maturityDate = new Date(`${maturityIso}T00:00:00Z`);
+      if (Number.isNaN(maturityDate.getTime())) return null;
+      const daysLeft = Math.round((maturityDate.getTime() - today.getTime()) / 86400000);
+      return {
+        symbol: String(item.symbol || '').trim().toUpperCase() || 'BOND',
+        name: item.issuer || item.asset_name || item.symbol || 'Bond holding',
+        maturityIso,
+        daysLeft
+      };
+    })
+    .filter(item => item && item.daysLeft >= 0)
+    .sort((a, b) => a.daysLeft - b.daysLeft)
+    .slice(0, Math.max(0, limit));
+
+  return nearest.map(item => createSystemAlertEvent(
+    'BOND_MATURITY',
+    'Bond maturity is near',
+    `${item.name} matures on ${item.maturityIso} (in ${item.daysLeft} day(s)).`,
+    `system:bond:maturity:${dayKey}:${item.symbol}:${item.maturityIso}`,
+    'warning',
+    item.symbol
+  ));
 }
 
 async function buildAlertContext(rules) {
@@ -1929,6 +1964,7 @@ async function evaluateAlertRule(rule, context) {
       return null;
   }
 }
+
 
 function evaluatePriceRule(rule, context, predicate, title) {
   const price = currentPriceForRule(rule, context);
