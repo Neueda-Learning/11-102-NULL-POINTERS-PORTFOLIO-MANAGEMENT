@@ -748,24 +748,49 @@ async function showStockTransactions(symbol) {
 }
 
 async function showStockPerformance(symbol) {
-  openStockInsightModal(`📈 Performance: ${symbol}`);
+  const normalized = String(symbol || '').trim().toUpperCase();
+  openStockInsightModal(`📈 Performance: ${normalized}`);
   const statusEl = document.getElementById('stock-insight-status');
+  const contentEl = document.getElementById('stock-insight-content');
   const wrapEl = document.getElementById('stock-performance-wrap');
-  statusEl.innerHTML = '<span style="color:var(--text-muted);">Loading performance...</span>';
-  try {
-    const result = await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}/performance`);
-    const points = result.points || [];
-    if (!points.length) {
-      document.getElementById('stock-insight-content').innerHTML = emptyState(`No performance data available for ${symbol}.`);
-      statusEl.innerHTML = '';
-      return;
-    }
-    wrapEl.style.display = 'flex';
-    renderStockPerformanceChart(points, `${result.companyName || symbol} (${symbol})`);
-    statusEl.innerHTML = `<span class="status-success">✅ Last ${points.length} day(s) performance loaded</span>`;
-  } catch (e) {
-    statusEl.innerHTML = `<span class="status-error">❌ ${e.message}</span>`;
+  if (!normalized) {
+    statusEl.innerHTML = '<span class="status-error">❌ Invalid stock symbol.</span>';
+    return;
   }
+
+  if (stockInsightChart) {
+    stockInsightChart.destroy();
+    stockInsightChart = null;
+  }
+
+  wrapEl.style.display = 'none';
+  contentEl.innerHTML = '<p style="color:var(--text-muted);">Loading widget...</p>';
+
+  const src = buildFinnhubStockWidgetUrl(normalized);
+  contentEl.innerHTML = `
+    <div style="height:430px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <iframe
+        title="${esc(normalized)} performance chart"
+        src="${esc(src)}"
+        style="width:100%;height:100%;border:0;background:#111827;"
+        loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade"
+      ></iframe>
+    </div>`;
+
+  statusEl.innerHTML = '<span class="status-success">✅ Live performance widget loaded</span>';
+}
+
+function buildFinnhubStockWidgetUrl(symbol) {
+  const params = new URLSearchParams({
+    symbol,
+    theme: 'dark',
+    withdateranges: '1',
+    indicators: '1',
+    allow_symbol_change: '0',
+    locale: 'en'
+  });
+  return `https://widget.finnhub.io/widgets/stocks/chart?${params.toString()}`;
 }
 
 function renderStockPerformanceChart(points, label) {

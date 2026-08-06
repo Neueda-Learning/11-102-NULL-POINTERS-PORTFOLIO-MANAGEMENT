@@ -98,8 +98,8 @@ public class StockMarketService {
 
     public StockPerformanceResponse getPerformance(String symbol) {
         String normalizedSymbol = normalizeSymbolOrQuery(symbol);
-        FinnhubRestClient.FinnhubProfile profile = finnhubRestClient.getCompanyProfile(normalizedSymbol);
-        List<StockPerformancePointResponse> points = finnhubRestClient.getDailyPerformance(normalizedSymbol, 10)
+        FinnhubRestClient.FinnhubProfile profile = loadProfileOrFallback(normalizedSymbol);
+        List<StockPerformancePointResponse> points = getPerformanceWithFallback(normalizedSymbol, 10)
                 .stream()
                 .map(point -> new StockPerformancePointResponse(point.date(), point.closePrice()))
                 .toList();
@@ -159,6 +159,19 @@ public class StockMarketService {
             String alternate = symbol.replace('.', '-');
             log.debug("Retrying quote lookup for {} using alternate symbol {}", symbol, alternate);
             return finnhubRestClient.getQuote(alternate);
+        }
+    }
+
+    private List<FinnhubRestClient.FinnhubCandlePoint> getPerformanceWithFallback(String symbol, int days) {
+        try {
+            return finnhubRestClient.getDailyPerformance(symbol, days);
+        } catch (Exception primaryError) {
+            if (!symbol.contains(".")) {
+                throw primaryError;
+            }
+            String alternate = symbol.replace('.', '-');
+            log.debug("Retrying performance lookup for {} using alternate symbol {}", symbol, alternate);
+            return finnhubRestClient.getDailyPerformance(alternate, days);
         }
     }
 
