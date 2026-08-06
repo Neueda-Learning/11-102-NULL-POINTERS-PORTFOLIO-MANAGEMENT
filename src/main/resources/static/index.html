@@ -29,6 +29,9 @@
     <a href="#" class="nav-item" data-section="transactions">
       <span class="nav-icon">🧾</span> Transactions
     </a>
+    <a href="#" class="nav-item" data-section="alerts">
+      <span class="nav-icon">🔔</span> Alerts <span id="alerts-nav-badge" class="badge badge-sell" style="display:none;margin-left:auto;">0</span>
+    </a>
     <a href="#" class="nav-item" data-section="settings">
       <span class="nav-icon">⚙️</span> Settings
     </a>
@@ -58,12 +61,17 @@
     </div>
   </header>
 
+  <div id="action-alert-host" class="action-alert-host" aria-live="polite" aria-atomic="true"></div>
+
   <!-- Content -->
   <main class="main-content">
 
     <!-- ── DASHBOARD ───────────────────────────────────────────────────── -->
     <section id="section-dashboard" class="section active">
-      <div class="section-header"><h2>Dashboard</h2></div>
+      <div class="section-header">
+        <h2>Dashboard</h2>
+        <button class="btn btn-secondary btn-sm" id="dashboard-alerts-toggle-btn" onclick="toggleDashboardAlertsVisibility()">Hide Live Alerts</button>
+      </div>
       <div class="summary-grid" id="summary-cards"></div>
       <div class="charts-grid">
         <div class="card chart-card">
@@ -74,6 +82,17 @@
           <h3>Portfolio Performance</h3>
           <div class="chart-wrap"><canvas id="chart-performance"></canvas></div>
         </div>
+      </div>
+      <div class="card dashboard-alerts-card" id="dashboard-live-alerts-card">
+        <div class="section-header" style="margin-bottom:12px;">
+          <h3>Live Alerts</h3>
+          <div class="action-group">
+            <button class="btn btn-secondary btn-sm" onclick="evaluateAlerts(true)">Check Alerts</button>
+            <button class="btn btn-secondary btn-sm" onclick="clearTriggeredAlertsFromDashboard()">Clear Triggered</button>
+            <button class="btn btn-secondary btn-sm" onclick="navigateTo('alerts')">Open Alerts Center</button>
+          </div>
+        </div>
+        <div id="dashboard-alerts-container"></div>
       </div>
     </section>
 
@@ -117,7 +136,6 @@
           <input id="market-symbol-input" type="text" placeholder="Search crypto symbol e.g. BTCUSD" />
           <button class="btn btn-secondary" onclick="lookupCryptoBySymbol()">Search</button>
           <button class="btn btn-secondary" onclick="refreshMarketplace()">🔄 Refresh Market</button>
-          <button class="btn btn-primary" onclick="openAddModal('CRYPTO')">+ Buy Crypto</button>
         </div>
         <!-- Pagination row — visible only when STOCK is selected -->
         <div class="filter-row" id="marketplace-pagination-row" style="display:none;">
@@ -143,6 +161,68 @@
       <div class="card table-card">
         <div id="tx-status" class="status-bar"></div>
         <div id="tx-container" style="overflow-x:auto;"></div>
+      </div>
+    </section>
+
+    <!-- ── ALERTS ───────────────────────────────────────────────────────── -->
+    <section id="section-alerts" class="section">
+      <div class="section-header">
+        <h2>Alerts Center</h2>
+        <div class="action-group">
+          <button class="btn btn-secondary" onclick="evaluateAlerts(true)">Check Now</button>
+          <button class="btn btn-secondary" onclick="markAlertsRead()">Mark All Read</button>
+        </div>
+      </div>
+      <div class="status-bar" id="alerts-status"></div>
+      <div class="card" style="margin-bottom:20px;">
+        <h3 style="margin-bottom:16px;">Create Alert Rule</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="alert-type">Alert Type</label>
+            <select id="alert-type" onchange="onAlertTypeChange()">
+              <option value="PRICE_ABOVE">Price above target</option>
+              <option value="DAILY_CHANGE">Price changed by X% in a day</option>
+              <option value="PROFIT_LOSS">Profit / Loss alert</option>
+              <option value="GOAL_PORTFOLIO_VALUE">Goal: portfolio value</option>
+              <option value="RISK_CONCENTRATION">Risk: concentration</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="alert-asset-type">Asset Type</label>
+            <select id="alert-asset-type">
+              <option value="STOCK">Stock</option>
+              <option value="CRYPTO">Crypto</option>
+              <option value="BOND">Bond</option>
+              <option value="PORTFOLIO">Portfolio</option>
+              <option value="MARKET">Market</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="alert-symbol">Symbol / Scope</label>
+            <input id="alert-symbol" placeholder="e.g. AAPL, BTCUSD, STOCK, CRYPTO" />
+          </div>
+          <div class="form-group">
+            <label for="alert-threshold">Threshold</label>
+            <input id="alert-threshold" type="number" step="0.01" placeholder="e.g. 5 or 200" />
+          </div>
+          <div class="form-group">
+            <label for="alert-keyword">Keyword / Note</label>
+            <input id="alert-keyword" placeholder="Used for news keyword or goal note" />
+          </div>
+        </div>
+        <div class="settings-actions" style="margin-top:16px;">
+          <button class="btn btn-primary" onclick="saveAlertRule()">Save Alert Rule</button>
+        </div>
+      </div>
+      <div class="charts-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="card">
+          <h3 style="margin-bottom:16px;">Active Rules</h3>
+          <div id="alert-rules-container"></div>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom:16px;">Triggered Alerts</h3>
+          <div id="alert-events-container"></div>
+        </div>
       </div>
     </section>
 
@@ -284,7 +364,7 @@
       <span id="add-status" class="status-msg"></span>
       <div style="display:flex;gap:12px;">
         <button class="btn btn-secondary" onclick="closeAddModal()">Cancel</button>
-        <button class="btn btn-primary" id="add-submit-btn" onclick="submitAddAsset()">Add Asset</button>
+        <button class="btn btn-primary" id="add-submit-btn" onclick="reviewAddAsset()">Review Trade</button>
       </div>
     </div>
   </div>
@@ -310,7 +390,40 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeSellModal()">Cancel</button>
-      <button class="btn btn-danger" onclick="confirmSell()">Confirm Sell</button>
+      <button class="btn btn-danger" onclick="reviewSellTrade()">Review Sell</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TRADE PREVIEW MODAL ═══════════════════════════════════════════════ -->
+<div class="modal-overlay" id="trade-preview-modal" onclick="closeTradePreviewModal()">
+  <div class="modal large-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="trade-preview-title">Review Trade</h3>
+      <button class="modal-close" onclick="closeTradePreviewModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="trade-preview-content"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeTradePreviewModal()">Cancel</button>
+      <button class="btn btn-primary" id="trade-preview-confirm-btn" onclick="confirmTradePreview()">Confirm Trade</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TRADE RECEIPT MODAL ═══════════════════════════════════════════════ -->
+<div class="modal-overlay" id="trade-receipt-modal" onclick="closeTradeReceiptModal()">
+  <div class="modal large-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="trade-receipt-title">Trade Receipt</h3>
+      <button class="modal-close" onclick="closeTradeReceiptModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="trade-receipt-content"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeTradeReceiptModal()">Close</button>
     </div>
   </div>
 </div>

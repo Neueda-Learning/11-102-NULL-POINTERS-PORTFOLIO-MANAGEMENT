@@ -19,6 +19,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 @Component
 public class FinnhubRestClient {
@@ -161,6 +162,52 @@ public class FinnhubRestClient {
         return points.subList(points.size() - days, points.size());
     }
 
+    public List<FinnhubNewsItem> getCompanyNews(String symbol, int daysBack, int limit) {
+        String normalizedSymbol = symbol == null ? "" : symbol.trim().toUpperCase(Locale.ROOT);
+        int safeLimit = Math.max(1, Math.min(limit, 10));
+        if (mockMode) {
+            return mockGetCompanyNews(normalizedSymbol, safeLimit);
+        }
+
+        LocalDate to = LocalDate.now(ZoneOffset.UTC);
+        LocalDate from = to.minusDays(Math.max(daysBack, 1));
+        JsonNode root = getJson(
+                "/company-news",
+                queryParam("symbol", normalizedSymbol),
+                queryParam("from", from.toString()),
+                queryParam("to", to.toString())
+        );
+
+        List<FinnhubNewsItem> items = new ArrayList<>();
+        if (!root.isArray()) {
+            return items;
+        }
+
+        for (JsonNode item : root) {
+            String headline = item.path("headline").asText("");
+            String url = item.path("url").asText("");
+            if (headline.isBlank() || url.isBlank()) {
+                continue;
+            }
+            long epoch = item.path("datetime").asLong(0L);
+            LocalDate publishedDate = epoch > 0
+                    ? Instant.ofEpochSecond(epoch).atZone(ZoneOffset.UTC).toLocalDate()
+                    : to;
+            items.add(new FinnhubNewsItem(
+                    normalizedSymbol,
+                    headline,
+                    item.path("source").asText("Finnhub"),
+                    url,
+                    item.path("summary").asText(""),
+                    publishedDate
+            ));
+            if (items.size() >= safeLimit) {
+                break;
+            }
+        }
+        return items;
+    }
+
     private QueryParam queryParam(String name, String value) {
         return new QueryParam(name, value);
     }
@@ -285,6 +332,15 @@ public class FinnhubRestClient {
         return points;
     }
 
+    private List<FinnhubNewsItem> mockGetCompanyNews(String symbol, int limit) {
+        List<FinnhubNewsItem> items = List.of(
+                new FinnhubNewsItem(symbol, symbol + " launches new AI platform", "MockWire", "https://example.com/news/" + symbol + "/1", "Analysts expect stronger cloud growth after the launch.", LocalDate.now().minusDays(1)),
+                new FinnhubNewsItem(symbol, symbol + " reports stronger than expected revenue", "MockWire", "https://example.com/news/" + symbol + "/2", "Quarterly results beat consensus estimates across key segments.", LocalDate.now().minusDays(2)),
+                new FinnhubNewsItem(symbol, symbol + " faces regulatory review in key market", "MockWire", "https://example.com/news/" + symbol + "/3", "Investors are watching for impacts on margin guidance and expansion plans.", LocalDate.now().minusDays(3))
+        );
+        return items.subList(0, Math.min(limit, items.size()));
+    }
+
     public record FinnhubSearchItem(String symbol, String displaySymbol, String description, String type) {
     }
 
@@ -314,6 +370,16 @@ public class FinnhubRestClient {
     public record FinnhubCandlePoint(
             LocalDate date,
             BigDecimal closePrice
+    ) {
+    }
+
+    public record FinnhubNewsItem(
+            String symbol,
+            String headline,
+            String source,
+            String url,
+            String summary,
+            LocalDate publishedDate
     ) {
     }
 }
