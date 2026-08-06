@@ -24,7 +24,7 @@ public class OpenApiConfig {
                         .version("1.0.0")
                         .contact(new Contact().name("Portfolio Manager Team"))
                         .license(new License().name("MIT")))
-                .servers(List.of(new Server().url("http://localhost:8085").description("Local Dev")));
+                .servers(List.of(new Server().url("http://localhost:8080").description("Local Dev")));
     }
 }
 

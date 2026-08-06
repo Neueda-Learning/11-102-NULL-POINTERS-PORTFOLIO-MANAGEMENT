@@ -12,6 +12,7 @@ pipeline {
         ENV_FILE = '.env'
         APP_PORT = '8085'
         SERVER_PORT = '8080'
+        FINNHUB_API_KEY = 'd9omjlhr01qmf0tb9l9gd9omjlhr01qmf0tb9la0'
     }
 
     stages {
@@ -62,7 +63,8 @@ fi
         stage('Prepare Deploy Env') {
             steps {
                 script {
-                    if (!(env.FINNHUB_API_KEY ?: '').trim()) {
+                    def finnhubKey = (env.FINNHUB_API_KEY ?: '').trim()
+                    if (!finnhubKey) {
                         error('FINNHUB_API_KEY is required. Configure it in Jenkins credentials/environment.')
                     }
 
@@ -74,7 +76,7 @@ MYSQL_PASSWORD=${env.MYSQL_PASSWORD ?: 'portfolio_password'}
 MYSQL_PORT=${env.MYSQL_PORT ?: '3306'}
 APP_PORT=${env.APP_PORT ?: '8085'}
 SERVER_PORT=${env.SERVER_PORT ?: '8080'}
-FINNHUB_API_KEY=${env.FINNHUB_API_KEY}
+FINNHUB_API_KEY=${finnhubKey}
 FINNHUB_BASE_URL=${env.FINNHUB_BASE_URL ?: 'https://finnhub.io/api/v1'}
 FINNHUB_WEBSOCKET_URL=${env.FINNHUB_WEBSOCKET_URL ?: 'wss://ws.finnhub.io'}
 """.trim() + "\n"
