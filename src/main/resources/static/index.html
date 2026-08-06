@@ -233,20 +233,19 @@
         <div class="card settings-card profile-card">
           <div class="settings-card-head">
             <h3>Profile</h3>
-            <span class="settings-chip">Demo</span>
+            <span class="settings-chip" id="profile-status-chip">Demo</span>
           </div>
           <p class="settings-card-sub">Manage your public profile details and visibility.</p>
           <div class="profile-inline">
-            <div class="profile-avatar">PM</div>
-            <div>
-              <div class="profile-name">Portfolio Manager</div>
-              <div class="profile-email">manager@portfolio.local</div>
+            <div class="profile-avatar" id="profile-avatar-display">PM</div>
+            <div style="flex:1;">
+              <div class="profile-name" id="profile-name-display">Portfolio Manager</div>
+              <div class="profile-email" id="profile-email-display">manager@portfolio.local</div>
             </div>
           </div>
           <div class="settings-actions">
-            <button class="btn btn-primary" onclick="onSettingsAction('addProfile')">Add Profile</button>
-            <button class="btn btn-secondary" onclick="onSettingsAction('editProfile')">Edit Profile</button>
-            <button class="btn btn-secondary" onclick="onSettingsAction('showProfile')">Show Profile</button>
+            <button class="btn btn-primary" onclick="openEditProfileModal()">Edit Profile</button>
+            <button class="btn btn-secondary" onclick="resetProfileToDefault()">Reset</button>
           </div>
         </div>
 
@@ -460,6 +459,48 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeStockInsightModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ EDIT PROFILE MODAL ════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="edit-profile-modal" onclick="closeEditProfileModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>✏️ Edit Profile</h3>
+      <button class="modal-close" onclick="closeEditProfileModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="edit-profile-name">Full Name</label>
+        <input id="edit-profile-name" type="text" placeholder="Enter your name" />
+      </div>
+      <div class="form-group">
+        <label for="edit-profile-email">Email Address</label>
+        <input id="edit-profile-email" type="email" placeholder="Enter your email" />
+      </div>
+      <div class="form-group">
+        <label>Avatar Color Scheme</label>
+        <div class="avatar-color-options">
+          <button type="button" class="avatar-color-btn" onclick="selectAvatarColor('blue')" title="Blue" data-color="blue" style="background:linear-gradient(135deg, #4f46e5, #7c3aed);"></button>
+          <button type="button" class="avatar-color-btn" onclick="selectAvatarColor('green')" title="Green" data-color="green" style="background:linear-gradient(135deg, #16a34a, #22c55e);"></button>
+          <button type="button" class="avatar-color-btn" onclick="selectAvatarColor('red')" title="Red" data-color="red" style="background:linear-gradient(135deg, #ef4444, #f87171);"></button>
+          <button type="button" class="avatar-color-btn" onclick="selectAvatarColor('purple')" title="Purple" data-color="purple" style="background:linear-gradient(135deg, #9333ea, #d946ef);"></button>
+          <button type="button" class="avatar-color-btn" onclick="selectAvatarColor('orange')" title="Orange" data-color="orange" style="background:linear-gradient(135deg, #f97316, #fb923c);"></button>
+          <button type="button" class="avatar-color-btn" onclick="selectAvatarColor('pink')" title="Pink" data-color="pink" style="background:linear-gradient(135deg, #ec4899, #f472b6);"></button>
+        </div>
+      </div>
+      <div style="margin-top:20px; padding:16px; background:var(--bg); border-radius:8px; text-align:center;">
+        <div class="profile-avatar" id="edit-profile-avatar-preview" style="width:64px; height:64px; font-size:1.5rem; margin:0 auto 8px;">PM</div>
+        <p style="font-size:.85rem; color:var(--text-muted);">Preview of your profile avatar</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span id="edit-profile-status" class="status-msg"></span>
+      <div style="display:flex;gap:12px;">
+        <button class="btn btn-secondary" onclick="closeEditProfileModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveProfileChanges()">Save Changes</button>
+      </div>
     </div>
   </div>
 </div>

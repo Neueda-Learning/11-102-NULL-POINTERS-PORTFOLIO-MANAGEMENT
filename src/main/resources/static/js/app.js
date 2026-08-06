@@ -33,6 +33,7 @@ const ALERT_RULES_KEY = 'portfolio.alertRules';
 const ALERT_EVENTS_KEY = 'portfolio.alertEvents';
 const ALERT_SNAPSHOTS_KEY = 'portfolio.alertSnapshots';
 const DASHBOARD_ALERTS_VISIBLE_KEY = 'portfolio.dashboardAlertsVisible';
+const PROFILE_KEY = 'portfolio.userProfile';
 const ACTION_ALERT_MAX = 4;
 const ALLOWED_ALERT_TYPES = ['PROFIT_LOSS', 'RISK_CONCENTRATION', 'GOAL_PORTFOLIO_VALUE', 'PRICE_ABOVE', 'DAILY_CHANGE'];
 
@@ -63,6 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initAlerts();
   onAlertTypeChange();
   initStockLivePrices();
+  loadProfileData();
   navigateTo('dashboard');
 });
 
@@ -90,6 +92,162 @@ function navigateTo(section) {
     case 'transactions': loadTransactions(); break;
     case 'alerts':       renderAlertsSection(); break;
     default: break;
+  }
+}
+
+// ─── Profile Management ───────────────────────────────────────────────────
+const defaultProfile = {
+  name: 'Portfolio Manager',
+  email: 'manager@portfolio.local',
+  color: 'blue'
+};
+
+function getProfile() {
+  try {
+    const stored = localStorage.getItem(PROFILE_KEY);
+    return stored ? JSON.parse(stored) : { ...defaultProfile };
+  } catch (e) {
+    return { ...defaultProfile };
+  }
+}
+
+function saveProfile(profile) {
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    loadProfileData();
+    pushActionAlert('✓ Profile saved successfully!', 'success');
+  } catch (e) {
+    pushActionAlert('✗ Failed to save profile', 'danger');
+    console.error('Profile save error:', e);
+  }
+}
+
+function loadProfileData() {
+  const profile = getProfile();
+  const initials = profile.name
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2) || 'PM';
+
+  const colorMap = {
+    blue: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+    green: 'linear-gradient(135deg, #16a34a, #22c55e)',
+    red: 'linear-gradient(135deg, #ef4444, #f87171)',
+    purple: 'linear-gradient(135deg, #9333ea, #d946ef)',
+    orange: 'linear-gradient(135deg, #f97316, #fb923c)',
+    pink: 'linear-gradient(135deg, #ec4899, #f472b6)'
+  };
+
+  // Update profile display
+  const avatar = document.getElementById('profile-avatar-display');
+  const name = document.getElementById('profile-name-display');
+  const email = document.getElementById('profile-email-display');
+
+  if (avatar) {
+    avatar.textContent = initials;
+    avatar.style.background = colorMap[profile.color] || colorMap.blue;
+  }
+  if (name) name.textContent = profile.name;
+  if (email) email.textContent = profile.email;
+}
+
+function openEditProfileModal() {
+  const profile = getProfile();
+  const nameInput = document.getElementById('edit-profile-name');
+  const emailInput = document.getElementById('edit-profile-email');
+
+  nameInput.value = profile.name;
+  emailInput.value = profile.email;
+
+  // Add real-time preview update
+  nameInput.oninput = () => {
+    const selectedColor = document.querySelector('.avatar-color-btn.selected');
+    const color = selectedColor ? selectedColor.dataset.color : 'blue';
+    updateAvatarPreview(nameInput.value || 'User', color);
+  };
+
+  // Reset color selection
+  document.querySelectorAll('.avatar-color-btn').forEach(btn => {
+    btn.classList.remove('selected');
+  });
+
+  // Select current color
+  const selectedBtn = document.querySelector(`[data-color="${profile.color}"]`);
+  if (selectedBtn) selectedBtn.classList.add('selected');
+
+  // Update preview
+  updateAvatarPreview(profile.name, profile.color);
+
+  document.getElementById('edit-profile-modal').style.display = 'flex';
+}
+
+function closeEditProfileModal() {
+  document.getElementById('edit-profile-modal').style.display = 'none';
+  document.getElementById('edit-profile-status').textContent = '';
+}
+
+function updateAvatarPreview(name, color) {
+  const initials = name
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2) || 'PM';
+
+  const colorMap = {
+    blue: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+    green: 'linear-gradient(135deg, #16a34a, #22c55e)',
+    red: 'linear-gradient(135deg, #ef4444, #f87171)',
+    purple: 'linear-gradient(135deg, #9333ea, #d946ef)',
+    orange: 'linear-gradient(135deg, #f97316, #fb923c)',
+    pink: 'linear-gradient(135deg, #ec4899, #f472b6)'
+  };
+
+  const preview = document.getElementById('edit-profile-avatar-preview');
+  if (preview) {
+    preview.textContent = initials;
+    preview.style.background = colorMap[color] || colorMap.blue;
+  }
+}
+
+function selectAvatarColor(color) {
+  // Update button selection UI
+  document.querySelectorAll('.avatar-color-btn').forEach(btn => {
+    btn.classList.remove('selected');
+  });
+  document.querySelector(`[data-color="${color}"]`).classList.add('selected');
+
+  // Update preview
+  const name = document.getElementById('edit-profile-name').value || 'User';
+  updateAvatarPreview(name, color);
+}
+
+function saveProfileChanges() {
+  const name = document.getElementById('edit-profile-name').value.trim();
+  const email = document.getElementById('edit-profile-email').value.trim();
+  const selectedColor = document.querySelector('.avatar-color-btn.selected');
+  const color = selectedColor ? selectedColor.dataset.color : 'blue';
+
+  if (!name) {
+    document.getElementById('edit-profile-status').textContent = '✗ Name cannot be empty';
+    return;
+  }
+
+  if (!email || !email.includes('@')) {
+    document.getElementById('edit-profile-status').textContent = '✗ Please enter a valid email';
+    return;
+  }
+
+  const profile = { name, email, color };
+  saveProfile(profile);
+  closeEditProfileModal();
+}
+
+function resetProfileToDefault() {
+  if (confirm('Are you sure you want to reset your profile to default?')) {
+    saveProfile({ ...defaultProfile });
   }
 }
 
