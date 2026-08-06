@@ -4,6 +4,7 @@ import com.portfolio_management.portfolio.investments.stock.client.FinnhubRestCl
 import com.portfolio_management.portfolio.investments.stock.dto.CompanyDetailsResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.MarketplacePageResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.MarketplaceStockResponse;
+import com.portfolio_management.portfolio.investments.stock.dto.StockNewsItemResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockPerformancePointResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockPerformanceResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockQuoteResponse;
@@ -104,6 +105,21 @@ public class StockMarketService {
                 .map(point -> new StockPerformancePointResponse(point.date(), point.closePrice()))
                 .toList();
         return new StockPerformanceResponse(normalizedSymbol, profile.companyName(), points);
+    }
+
+    public List<StockNewsItemResponse> getNews(String symbol, int limit) {
+        String normalizedSymbol = normalizeSymbolOrQuery(symbol);
+        return finnhubRestClient.getCompanyNews(normalizedSymbol, 7, limit)
+                .stream()
+                .map(item -> new StockNewsItemResponse(
+                        item.symbol(),
+                        item.headline(),
+                        item.source(),
+                        item.url(),
+                        item.summary(),
+                        item.publishedDate()
+                ))
+                .toList();
     }
 
     private StockQuoteResponse toQuoteResponse(FinnhubRestClient.FinnhubQuote quote) {

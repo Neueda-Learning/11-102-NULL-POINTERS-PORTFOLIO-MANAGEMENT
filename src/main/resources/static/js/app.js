@@ -29,12 +29,22 @@ const DUMMY_BOND_MARKET = [
   { issuer: 'Bajaj Finance', bondType: 'Corporate Bond', interestRate: 7.8, tenureMonths: 24, minInvestment: 2000 }
 ];
 
+const ALERT_RULES_KEY = 'portfolio.alertRules';
+const ALERT_EVENTS_KEY = 'portfolio.alertEvents';
+const ALERT_SNAPSHOTS_KEY = 'portfolio.alertSnapshots';
+const DASHBOARD_ALERTS_VISIBLE_KEY = 'portfolio.dashboardAlertsVisible';
+const ACTION_ALERT_MAX = 4;
+const ALLOWED_ALERT_TYPES = ['PROFIT_LOSS', 'RISK_CONCENTRATION', 'GOAL_PORTFOLIO_VALUE', 'PRICE_ABOVE', 'DAILY_CHANGE'];
+
 let pendingSell = null;
 let allocationChart = null;
 let performanceChart = null;
 let stockInsightChart = null;
 let cryptoLookupTimer = null;
 let stockSymbolLookupTimer = null;
+let alertPollTimer = null;
+let tradePreviewContext = null;
+const actionAlerts = [];
 let stockLiveClient = null;
 const latestStockPrices = new Map();
 const DEFAULT_PORTFOLIO_ID = 1;
@@ -50,6 +60,8 @@ const marketplaceState = {
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
   initStockAutoFill();
+  initAlerts();
+  onAlertTypeChange();
   initStockLivePrices();
   navigateTo('dashboard');
 });
@@ -76,13 +88,136 @@ function navigateTo(section) {
     case 'holdings':     loadHoldings(document.getElementById('holdings-filter').value); break;
     case 'marketplace':  loadMarketplace(); break;
     case 'transactions': loadTransactions(); break;
+    case 'alerts':       renderAlertsSection(); break;
     default: break;
   }
+}
+
+function pushActionAlert(message, level = 'warning', ttlMs = 9000) {
+  const id = `action-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`;
+  actionAlerts.unshift({ id, message, level });
+  if (actionAlerts.length > ACTION_ALERT_MAX) actionAlerts.length = ACTION_ALERT_MAX;
+  renderActionAlerts();
+  setTimeout(() => {
+    const idx = actionAlerts.findIndex(item => item.id === id);
+    if (idx >= 0) {
+      actionAlerts.splice(idx, 1);
+      renderActionAlerts();
+    }
+  }, ttlMs);
+}
+
+function renderActionAlerts() {
+  const host = document.getElementById('action-alert-host');
+  if (!host) return;
+  host.innerHTML = actionAlerts.map(item => `
+    <div class="action-alert action-alert-${normalizeAlertLevel(item.level)}">
+      ${alertIconForLevel(item.level)} ${esc(item.message)}
+    </div>`).join('');
+}
+
+function alertLevelForEvent(event) {
+  if (event?.level) return normalizeAlertLevel(event.level);
+  const highRiskCategories = ['RISK_CONCENTRATION', 'RISK_DRAWDOWN', 'PROFIT_LOSS', 'MARKET_MOVE'];
+  return highRiskCategories.includes(event.category) ? 'risk' : 'warning';
+}
+
+function normalizeAlertLevel(level) {
+  return ['danger', 'warning', 'success', 'info', 'risk'].includes(level) ? level : 'warning';
+}
+
+function alertIconForLevel(level) {
+  switch (normalizeAlertLevel(level)) {
+    case 'danger': return '🔴';
+    case 'success': return '🟢';
+    case 'info': return '🔵';
+    case 'risk': return '🟠';
+    default: return '🟡';
+  }
+}
+
+function alertIconForEvent(event) {
+  return alertIconForLevel(alertLevelForEvent(event));
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────
 async function loadDashboard() {
   await Promise.all([loadSummary(), loadAllocationChart(), loadPerformanceChart()]);
+  applyDashboardAlertsVisibility();
+  renderDashboardAlerts();
+}
+
+function isDashboardAlertsVisible() {
+  const value = localStorage.getItem(DASHBOARD_ALERTS_VISIBLE_KEY);
+  return value == null ? true : value === 'true';
+}
+
+function applyDashboardAlertsVisibility() {
+  const card = document.getElementById('dashboard-live-alerts-card');
+  const toggleBtn = document.getElementById('dashboard-alerts-toggle-btn');
+  if (!card || !toggleBtn) return;
+  const visible = isDashboardAlertsVisible();
+  card.style.display = visible ? '' : 'none';
+  toggleBtn.textContent = visible ? 'Hide Live Alerts' : 'Show Live Alerts';
+}
+
+function toggleDashboardAlertsVisibility() {
+  const nextVisible = !isDashboardAlertsVisible();
+  localStorage.setItem(DASHBOARD_ALERTS_VISIBLE_KEY, String(nextVisible));
+  applyDashboardAlertsVisibility();
+}
+
+function renderDashboardAlerts(limit = 6) {
+  if (!isDashboardAlertsVisible()) return;
+  const container = document.getElementById('dashboard-alerts-container');
+  if (!container) return;
+  const events = loadAlertEvents().slice(0, limit);
+  if (!events.length) {
+    container.innerHTML = emptyState('No alerts yet. Buy assets or run Check Alerts to evaluate rules.');
+    return;
+  }
+  container.innerHTML = events.map(event => {
+    const level = alertLevelForEvent(event);
+    return `
+      <div class="alert-event-card severity-${level} ${event.read ? '' : 'unread'}">
+        <div class="alert-title">${alertIconForEvent(event)} ${esc(event.title)}</div>
+        <div>${esc(event.message)}</div>
+        <div class="alert-pill-row">
+          <span class="alert-pill">${esc(event.category)}</span>
+          ${event.symbol ? `<span class="alert-pill">${esc(event.symbol)}</span>` : ''}
+        </div>
+        <div class="receipt-meta">${fmtDate(event.timestamp)}</div>
+        <div class="settings-actions" style="margin-top:10px;">
+          <button class="btn btn-secondary btn-sm" onclick="removeTriggeredAlertFromDashboard('${escJs(event.id)}')">Remove Trigger</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function removeTriggeredAlertFromDashboard(eventId) {
+  if (!eventId) return;
+  const nextEvents = loadAlertEvents().filter(event => event.id !== eventId);
+  saveAlertEvents(nextEvents);
+  renderAlertsSection();
+  renderDashboardAlerts();
+  renderAlertsBadge();
+  pushActionAlert('Triggered alert removed from dashboard.', 'warning', 5000);
+}
+
+function clearTriggeredAlertsFromDashboard() {
+  if (!window.confirm('Clear all triggered alerts from dashboard and alerts center?')) return;
+  saveAlertEvents([]);
+  renderAlertsSection();
+  renderDashboardAlerts();
+  renderAlertsBadge();
+  pushActionAlert('All triggered alerts cleared.', 'warning', 5000);
+}
+
+function scrollToDashboardLiveAlerts() {
+  if (!isDashboardAlertsVisible()) return;
+  const target = document.getElementById('dashboard-live-alerts-card') || document.getElementById('dashboard-alerts-container');
+  if (!target) return;
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function loadSummary() {
@@ -432,7 +567,6 @@ function buildMarketplaceCryptoMarketTable(rows) {
       <td>
         <div class="action-group">
           <button class="btn btn-secondary btn-sm" onclick="showCryptoDetails(${row.cryptoId})">Details</button>
-          <button class="btn btn-secondary btn-sm" onclick="refreshCryptoPrice('${escJs(row.symbol)}', true)">Refresh</button>
           <button class="btn btn-primary btn-sm" onclick='openAddModal("CRYPTO", ${json({ symbol: row.symbol, name: row.name, currentPrice: row.currentPrice })})'>Buy</button>
         </div>
       </td>
@@ -556,7 +690,6 @@ function buildMarketplaceCards(rows) {
         </div>
         <div class="market-card-actions">
           <button class="btn btn-secondary btn-sm" onclick="showCryptoDetails(${row.cryptoId})">Details</button>
-          <button class="btn btn-secondary btn-sm" onclick="refreshCryptoPrice('${escJs(row.symbol)}', true)">Refresh</button>
           <button class="btn btn-primary btn-sm" onclick='openAddModal("CRYPTO", ${json({ symbol: row.symbol, name: row.name, currentPrice: row.currentPrice })})'>Buy</button>
         </div>
       </article>`;
@@ -819,6 +952,8 @@ function renderStockPerformanceChart(points, label) {
 function openAddModal(type = 'STOCK', preset = {}) {
   document.getElementById('add-modal').classList.add('open');
   document.getElementById('add-status').textContent = '';
+  document.getElementById('add-submit-btn').textContent = 'Review Trade';
+  tradePreviewContext = null;
   document.getElementById('add-type').value = type;
   switchAddForm(type);
   const lookupStatus = document.getElementById('crypto-lookup-status');
@@ -833,6 +968,7 @@ function openAddModal(type = 'STOCK', preset = {}) {
 
 function closeAddModal() {
   document.getElementById('add-modal').classList.remove('open');
+  tradePreviewContext = null;
 }
 
 function switchAddForm(type) {
@@ -866,6 +1002,15 @@ async function autoFillStockFields(symbol) {
     statusEl.innerHTML = '<span class="status-success">✅ Stock fields auto-filled from symbol</span>';
   } catch (e) {
     statusEl.innerHTML = `<span class="status-error">❌ Could not auto-fill: ${e.message}</span>`;
+  }
+}
+
+async function reviewAddAsset() {
+  try {
+    tradePreviewContext = await buildAddTradePreview();
+    openTradePreviewModal('Review Buy Summary', tradePreviewContext.html, 'Confirm Buy');
+  } catch (error) {
+    document.getElementById('add-status').innerHTML = `<span class="status-error">❌ ${esc(error.message)}</span>`;
   }
 }
 
@@ -919,17 +1064,29 @@ async function submitAddAsset() {
     }
 
     statusEl.innerHTML = '<span class="status-success">✅ Asset added successfully!</span>';
+    const receipt = tradePreviewContext || await buildAddTradePreview();
     setTimeout(async () => {
+      closeTradePreviewModal();
       closeAddModal();
+      showTradeReceipt({
+        title: `${receipt.assetType} Buy Receipt`,
+        ...receipt,
+        status: 'Completed'
+      });
       await refreshDashboardAndHoldings();
       if (document.getElementById('section-transactions').classList.contains('active')) await loadTransactions();
       if (document.getElementById('section-marketplace').classList.contains('active')) await loadMarketplace();
+      const alertResult = await evaluateAlerts(true);
+      navigateTo('dashboard');
+      if (alertResult.newCount > 0) setTimeout(scrollToDashboardLiveAlerts, 120);
+      pushActionAlert('Trade completed. Alerts were checked right away.', 'warning', 7000);
     }, 700);
   } catch (error) {
     statusEl.innerHTML = `<span class="status-error">❌ ${esc(error.message)}</span>`;
+    pushActionAlert(`Trade could not be completed: ${error.message}`, 'danger');
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Add Asset';
+    btn.textContent = 'Review Trade';
   }
 }
 
@@ -966,9 +1123,19 @@ function closeSellModal() {
   document.getElementById('sell-quantity').value = '';
 }
 
+function reviewSellTrade() {
+  try {
+    tradePreviewContext = buildSellTradePreview();
+    openTradePreviewModal('Review Sell Summary', tradePreviewContext.html, 'Confirm Sell');
+  } catch (error) {
+    pushActionAlert(error.message, 'warning');
+  }
+}
+
 async function confirmSell() {
   if (!pendingSell) return;
   try {
+    const receipt = tradePreviewContext || buildSellTradePreview();
     if (pendingSell.type === 'CRYPTO') {
       const quantity = numberValue('sell-quantity');
       if (quantity == null || quantity <= 0) throw new Error('Enter a valid sell quantity');
@@ -988,13 +1155,143 @@ async function confirmSell() {
     } else {
       await apiFetch(`/api/v1/portfolio/sell/${pendingSell.id}`, { method: 'POST' });
     }
+    closeTradePreviewModal();
     closeSellModal();
+    showTradeReceipt({
+      title: `${receipt.assetType} Sell Receipt`,
+      ...receipt,
+      status: 'Completed'
+    });
     await refreshDashboardAndHoldings();
     await loadTransactions();
     if (document.getElementById('section-marketplace').classList.contains('active')) await loadMarketplace();
+    const alertResult = await evaluateAlerts(true);
+    navigateTo('dashboard');
+    if (alertResult.newCount > 0) setTimeout(scrollToDashboardLiveAlerts, 120);
+    pushActionAlert('Sell completed. Alerts were checked right away.', 'warning', 7000);
   } catch (error) {
-    alert(`Sell failed: ${error.message}`);
+    pushActionAlert(`Sell failed: ${error.message}`, 'danger');
   }
+}
+
+function openTradePreviewModal(title, contentHtml, actionLabel) {
+  document.getElementById('trade-preview-title').textContent = title;
+  document.getElementById('trade-preview-content').innerHTML = contentHtml;
+  document.getElementById('trade-preview-confirm-btn').textContent = actionLabel;
+  document.getElementById('trade-preview-modal').classList.add('open');
+}
+
+function closeTradePreviewModal() {
+  document.getElementById('trade-preview-modal').classList.remove('open');
+}
+
+function closeTradeReceiptModal() {
+  document.getElementById('trade-receipt-modal').classList.remove('open');
+}
+
+async function confirmTradePreview() {
+  if (!tradePreviewContext) return;
+  if (tradePreviewContext.kind === 'BUY') {
+    await submitAddAsset();
+  } else {
+    await confirmSell();
+  }
+}
+
+async function buildAddTradePreview() {
+  const type = document.getElementById('add-type').value;
+  if (type === 'STOCK') {
+    const symbol = val('stock-symbol').toUpperCase();
+    const assetName = val('stock-name');
+    const quantity = numberValue('stock-quantity');
+    const unitPrice = numberValue('stock-price');
+    if (!symbol || !assetName || quantity == null || unitPrice == null) throw new Error('Please fill all stock fields');
+    const holdings = safeArray(await apiFetch('/api/v1/portfolio/holdings?type=STOCK'));
+    const existing = holdings.find(row => String(row.symbol || '').toUpperCase() === symbol);
+    const existingQty = Number(existing?.quantity || 0);
+    const existingAvg = Number(existing?.purchase_price || 0);
+    const totalAmount = quantity * unitPrice;
+    const afterQty = existingQty + quantity;
+    const afterAvg = afterQty > 0 ? (((existingQty * existingAvg) + totalAmount) / afterQty) : unitPrice;
+    return buildTradePreviewModel({ kind: 'BUY', assetType: 'STOCK', symbol, assetName, quantity, unitPrice, totalAmount, remainingLabel: 'Shares after buy', remainingValue: num(afterQty, 4), extraLabel: 'Avg price after buy', extraValue: fmt(afterAvg) });
+  }
+
+  if (type === 'CRYPTO') {
+    const symbol = val('crypto-symbol').toUpperCase();
+    const assetName = val('crypto-name');
+    const quantity = numberValue('crypto-quantity');
+    const unitPrice = numberValue('crypto-buy-price');
+    if (!symbol || !assetName || quantity == null || unitPrice == null) throw new Error('Please fill all crypto fields');
+    const holdings = safeArray(await apiFetch('/api/v1/crypto'));
+    const existing = holdings.find(row => String(row.symbol || '').toUpperCase() === symbol);
+    const existingQty = Number(existing?.quantity || 0);
+    const totalAmount = quantity * unitPrice;
+    return buildTradePreviewModel({ kind: 'BUY', assetType: 'CRYPTO', symbol, assetName, quantity, unitPrice, totalAmount, remainingLabel: 'Quantity after buy', remainingValue: num(existingQty + quantity, 8), extraLabel: 'Current tracked price', extraValue: fmt(numberValue('crypto-current-price') || unitPrice) });
+  }
+
+  const assetName = val('bond-issuer');
+  const amount = numberValue('bond-amount');
+  const rate = numberValue('bond-rate');
+  const months = numberValue('bond-tenure');
+  if (!assetName || amount == null || rate == null || months == null || !val('bond-start')) throw new Error('Please fill all bond fields');
+  const estimatedMaturity = amount + (amount * rate * months / 1200);
+  return buildTradePreviewModel({ kind: 'BUY', assetType: 'BOND', symbol: assetName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) || 'BOND', assetName, quantity: 1, unitPrice: amount, totalAmount: amount, remainingLabel: 'Estimated maturity value', remainingValue: fmt(estimatedMaturity), extraLabel: 'Tenure / Rate', extraValue: `${months} months @ ${rate}%` });
+}
+
+function buildSellTradePreview() {
+  if (!pendingSell) throw new Error('No asset selected to sell');
+  if (pendingSell.type === 'STOCK') {
+    const quantity = numberValue('sell-quantity');
+    if (quantity == null || quantity <= 0) throw new Error('Enter a valid sell quantity');
+    if (Number(quantity) > Number(pendingSell.quantity)) throw new Error(`Sell quantity cannot exceed available stocks: ${num(pendingSell.quantity, 4)}`);
+    const unitPrice = Number(pendingSell.currentPrice || pendingSell.buyPrice || 0);
+    return buildTradePreviewModel({ kind: 'SELL', assetType: 'STOCK', symbol: pendingSell.symbol || pendingSell.name, assetName: pendingSell.name, quantity, unitPrice, totalAmount: quantity * unitPrice, remainingLabel: 'Shares after sell', remainingValue: num(Number(pendingSell.quantity) - quantity, 4), extraLabel: 'Available before sell', extraValue: num(pendingSell.quantity, 4) });
+  }
+  if (pendingSell.type === 'CRYPTO') {
+    const quantity = numberValue('sell-quantity');
+    if (quantity == null || quantity <= 0) throw new Error('Enter a valid sell quantity');
+    if (Number(quantity) > Number(pendingSell.quantity)) throw new Error('Sell quantity cannot exceed current holdings');
+    const unitPrice = Number(pendingSell.currentPrice || 0);
+    return buildTradePreviewModel({ kind: 'SELL', assetType: 'CRYPTO', symbol: pendingSell.symbol, assetName: pendingSell.name, quantity, unitPrice, totalAmount: quantity * unitPrice, remainingLabel: 'Quantity after sell', remainingValue: num(Number(pendingSell.quantity) - quantity, 8), extraLabel: 'Available before sell', extraValue: num(pendingSell.quantity, 8) });
+  }
+  return buildTradePreviewModel({ kind: 'SELL', assetType: 'BOND', symbol: pendingSell.symbol || pendingSell.name, assetName: pendingSell.name, quantity: 1, unitPrice: Number(pendingSell.currentPrice || 0), totalAmount: Number(pendingSell.currentPrice || 0), remainingLabel: 'Remaining position', remainingValue: 'Closed', extraLabel: 'Action', extraValue: 'Entire bond holding will be sold' });
+}
+
+function buildTradePreviewModel({ kind, assetType, symbol, assetName, quantity, unitPrice, totalAmount, remainingLabel, remainingValue, extraLabel, extraValue }) {
+  const html = `
+    <div class="receipt-grid">
+      <div><span>Action</span><strong>${esc(kind)}</strong></div>
+      <div><span>Asset Type</span><strong>${esc(assetType)}</strong></div>
+      <div><span>Symbol</span><strong>${esc(symbol)}</strong></div>
+      <div><span>Name</span><strong>${esc(assetName)}</strong></div>
+      <div><span>Quantity</span><strong>${num(quantity, 8)}</strong></div>
+      <div><span>Unit Price</span><strong>${fmt(unitPrice)}</strong></div>
+      <div><span>Amount ${kind === 'BUY' ? 'Deducted' : 'Credited'}</span><strong>${fmt(totalAmount)}</strong></div>
+      <div><span>${esc(remainingLabel)}</span><strong>${esc(remainingValue)}</strong></div>
+      <div><span>${esc(extraLabel)}</span><strong>${esc(extraValue)}</strong></div>
+    </div>
+    <p class="receipt-meta">Review this summary before confirming. A receipt will be generated after the trade completes.</p>`;
+  return { kind, assetType, symbol, assetName, quantity, unitPrice, totalAmount, remainingLabel, remainingValue, extraLabel, extraValue, html };
+}
+
+function showTradeReceipt(receipt) {
+  document.getElementById('trade-receipt-title').textContent = receipt.title || 'Trade Receipt';
+  document.getElementById('trade-receipt-content').innerHTML = `
+    <div class="receipt-grid">
+      <div><span>Status</span><strong>${esc(receipt.status || 'Completed')}</strong></div>
+      <div><span>Action</span><strong>${esc(receipt.kind || '')}</strong></div>
+      <div><span>Asset Type</span><strong>${esc(receipt.assetType || '')}</strong></div>
+      <div><span>Symbol</span><strong>${esc(receipt.symbol || '')}</strong></div>
+      <div><span>Name</span><strong>${esc(receipt.assetName || '')}</strong></div>
+      <div><span>Quantity</span><strong>${num(receipt.quantity || 0, 8)}</strong></div>
+      <div><span>Unit Price</span><strong>${fmt(receipt.unitPrice || 0)}</strong></div>
+      <div><span>Total ${receipt.kind === 'SELL' ? 'Credited' : 'Deducted'}</span><strong>${fmt(receipt.totalAmount || 0)}</strong></div>
+      <div><span>${esc(receipt.remainingLabel || 'Remaining')}</span><strong>${esc(receipt.remainingValue || '—')}</strong></div>
+      <div><span>${esc(receipt.extraLabel || 'Summary')}</span><strong>${esc(receipt.extraValue || '—')}</strong></div>
+    </div>
+    <p class="receipt-meta">Receipt generated at ${esc(new Date().toLocaleString())}.</p>`;
+  document.getElementById('trade-receipt-modal').classList.add('open');
+  tradePreviewContext = null;
 }
 
 // ─── Crypto Detail Actions ────────────────────────────────────────────────
@@ -1113,6 +1410,457 @@ function onSettingsAction(action) {
   } else {
     previewEl.innerHTML = '';
   }
+}
+
+// ─── Alerts Center ─────────────────────────────────────────────────────────
+function initAlerts() {
+  if (!localStorage.getItem(ALERT_RULES_KEY)) localStorage.setItem(ALERT_RULES_KEY, '[]');
+  if (!localStorage.getItem(ALERT_EVENTS_KEY)) localStorage.setItem(ALERT_EVENTS_KEY, '[]');
+  if (!localStorage.getItem(ALERT_SNAPSHOTS_KEY)) localStorage.setItem(ALERT_SNAPSHOTS_KEY, '{}');
+  renderAlertsBadge();
+  if (alertPollTimer) clearInterval(alertPollTimer);
+  alertPollTimer = setInterval(() => {
+    evaluateAlerts(false).catch(error => console.warn('Alert poll failed:', error.message));
+  }, 60000);
+  evaluateAlerts(false).catch(() => {});
+}
+
+function onAlertTypeChange() {
+  const type = val('alert-type');
+  const assetTypeEl = document.getElementById('alert-asset-type');
+  const symbolEl = document.getElementById('alert-symbol');
+  const keywordEl = document.getElementById('alert-keyword');
+  if (!assetTypeEl || !symbolEl || !keywordEl) return;
+
+  if (type === 'GOAL_PORTFOLIO_VALUE') {
+    assetTypeEl.value = 'PORTFOLIO';
+    symbolEl.placeholder = 'Optional note';
+  } else if (type === 'RISK_CONCENTRATION') {
+    assetTypeEl.value = 'PORTFOLIO';
+    symbolEl.placeholder = 'STOCK, BOND or CRYPTO';
+  } else {
+    symbolEl.placeholder = 'e.g. AAPL or BTCUSD';
+    keywordEl.placeholder = 'Optional note';
+  }
+}
+
+function loadAlertRules() {
+  try {
+    const rules = safeArray(JSON.parse(localStorage.getItem(ALERT_RULES_KEY) || '[]'));
+    const filtered = rules.filter(rule => ALLOWED_ALERT_TYPES.includes(rule?.type));
+    if (filtered.length !== rules.length) saveAlertRules(filtered);
+    return filtered;
+  } catch {
+    return [];
+  }
+}
+
+function saveAlertRules(rules) {
+  localStorage.setItem(ALERT_RULES_KEY, JSON.stringify(rules));
+}
+
+function loadAlertEvents() {
+  try {
+    return safeArray(JSON.parse(localStorage.getItem(ALERT_EVENTS_KEY) || '[]'));
+  } catch {
+    return [];
+  }
+}
+
+function saveAlertEvents(events) {
+  localStorage.setItem(ALERT_EVENTS_KEY, JSON.stringify(events.slice(0, 100)));
+}
+
+function loadAlertSnapshots() {
+  try {
+    return JSON.parse(localStorage.getItem(ALERT_SNAPSHOTS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveAlertSnapshots(snapshots) {
+  localStorage.setItem(ALERT_SNAPSHOTS_KEY, JSON.stringify(snapshots));
+}
+
+function saveAlertRule() {
+  const type = val('alert-type');
+  const assetType = val('alert-asset-type');
+  const symbol = val('alert-symbol').toUpperCase();
+  const threshold = numberValue('alert-threshold');
+  const keyword = val('alert-keyword');
+
+  if (!ALLOWED_ALERT_TYPES.includes(type)) {
+    setAlertsStatus('This alert type is no longer supported.', true);
+    return;
+  }
+
+  if (['PRICE_ABOVE', 'DAILY_CHANGE', 'PROFIT_LOSS', 'RISK_CONCENTRATION', 'GOAL_PORTFOLIO_VALUE'].includes(type) && threshold == null) {
+    setAlertsStatus('Threshold is required for this alert type.', true);
+    return;
+  }
+  if (['PRICE_ABOVE', 'DAILY_CHANGE', 'PROFIT_LOSS'].includes(type) && !symbol) {
+    setAlertsStatus('Symbol / scope is required for this alert type.', true);
+    return;
+  }
+
+  const rules = loadAlertRules();
+  rules.unshift({
+    id: `rule-${Date.now()}`,
+    type,
+    assetType,
+    symbol,
+    threshold,
+    keyword,
+    createdAt: new Date().toISOString(),
+    active: true
+  });
+  saveAlertRules(rules);
+  renderAlertsSection();
+  setAlertsStatus('Alert rule saved successfully.', false);
+  pushActionAlert('Alert rule saved. It will be checked automatically.', 'warning', 6000);
+  evaluateAlerts(true).catch(error => setAlertsStatus(error.message, true));
+}
+
+function deleteAlertRule(ruleId) {
+  saveAlertRules(loadAlertRules().filter(rule => rule.id !== ruleId));
+  renderAlertsSection();
+}
+
+function markAlertsRead() {
+  const events = loadAlertEvents().map(event => ({ ...event, read: true }));
+  saveAlertEvents(events);
+  renderAlertsSection();
+  renderAlertsBadge();
+}
+
+function renderAlertsBadge() {
+  const badge = document.getElementById('alerts-nav-badge');
+  if (!badge) return;
+  const unread = loadAlertEvents().filter(event => !event.read).length;
+  badge.style.display = unread ? 'inline-flex' : 'none';
+  badge.textContent = String(unread);
+}
+
+function renderAlertsSection() {
+  const rulesContainer = document.getElementById('alert-rules-container');
+  const eventsContainer = document.getElementById('alert-events-container');
+  if (!rulesContainer || !eventsContainer) return;
+
+  const rules = loadAlertRules();
+  const events = loadAlertEvents();
+
+  rulesContainer.innerHTML = rules.length ? rules.map(rule => `
+    <div class="alert-rule-card">
+      <div class="alert-title">${esc(rule.type.replaceAll('_', ' '))}</div>
+      <div class="alert-pill-row">
+        <span class="alert-pill">${esc(rule.assetType || 'GENERAL')}</span>
+        ${rule.symbol ? `<span class="alert-pill">${esc(rule.symbol)}</span>` : ''}
+        ${rule.threshold != null ? `<span class="alert-pill">Threshold: ${esc(rule.threshold)}</span>` : ''}
+      </div>
+      ${rule.keyword ? `<div class="receipt-meta">Keyword / note: ${esc(rule.keyword)}</div>` : ''}
+      <div class="receipt-meta">Created ${fmtDate(rule.createdAt)}</div>
+      <div class="settings-actions" style="margin-top:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="deleteAlertRule('${escJs(rule.id)}')">Delete</button>
+      </div>
+    </div>`).join('') : emptyState('No alert rules configured yet.');
+
+  eventsContainer.innerHTML = events.length ? events.map(event => `
+    <div class="alert-event-card severity-${alertLevelForEvent(event)} ${event.read ? '' : 'unread'}">
+      <div class="alert-title">${alertIconForEvent(event)} ${esc(event.title)}</div>
+      <div>${esc(event.message)}</div>
+      <div class="alert-pill-row">
+        <span class="alert-pill">${esc(event.category)}</span>
+        ${event.symbol ? `<span class="alert-pill">${esc(event.symbol)}</span>` : ''}
+      </div>
+      <div class="receipt-meta">${fmtDate(event.timestamp)}</div>
+    </div>`).join('') : emptyState('No triggered alerts yet.');
+
+  renderAlertsBadge();
+  renderDashboardAlerts();
+}
+
+function setAlertsStatus(message, isError) {
+  const statusEl = document.getElementById('alerts-status');
+  if (!statusEl) return;
+  statusEl.innerHTML = `<span class="${isError ? 'status-error' : 'status-success'}">${esc(message)}</span>`;
+}
+
+async function evaluateAlerts(showStatus = false) {
+  const rules = loadAlertRules().filter(rule => rule.active !== false);
+  const context = await buildAlertContext(rules);
+  const events = loadAlertEvents();
+  let newCount = 0;
+  const newEvents = [];
+
+  for (const rule of rules) {
+    const triggered = await evaluateAlertRule(rule, context);
+    if (!triggered) continue;
+    if (tryAddTriggeredEvent(events, newEvents, triggered)) newCount += 1;
+  }
+
+  for (const systemEvent of evaluateAutomaticMarketAlerts(context)) {
+    if (tryAddTriggeredEvent(events, newEvents, systemEvent)) newCount += 1;
+  }
+
+  saveAlertEvents(events);
+  renderAlertsSection();
+  for (const event of newEvents.slice(0, 3)) {
+    pushActionAlert(`${event.title}: ${event.message}`, alertLevelForEvent(event), 11000);
+  }
+  if (showStatus) {
+    if (!rules.length && !newCount) {
+      setAlertsStatus('No custom rules found. Showing automatic daily alerts only.', false);
+    } else {
+      setAlertsStatus(newCount ? `${newCount} new alert(s) triggered.` : 'Alerts checked. No new triggers.', false);
+    }
+  }
+  return { newCount, newEvents };
+}
+
+function tryAddTriggeredEvent(events, newEvents, triggered) {
+  if (!triggered) return false;
+  const duplicate = events.some(event => event.signature === triggered.signature);
+  if (duplicate) return false;
+  events.unshift(triggered);
+  newEvents.push(triggered);
+  return true;
+}
+
+function evaluateAutomaticMarketAlerts(context) {
+  const dayKey = new Date().toISOString().slice(0, 10);
+  const systemEvents = [];
+
+  const btcDrop = Number(context.cryptoQuotes.BTCUSD?.dailyChangePercent);
+  if (Number.isFinite(btcDrop) && btcDrop <= -5) {
+    systemEvents.push(createSystemAlertEvent(
+      'DAILY_CHANGE',
+      'Bitcoin fell sharply',
+      `Bitcoin fell ${Math.abs(btcDrop).toFixed(1)}% today.`,
+      `system:btc:drop:${dayKey}`,
+      'danger',
+      'BTCUSD'
+    ));
+  }
+
+  const portfolioValue = Number(context.summary?.totalPortfolioValue || 0);
+  if (portfolioValue >= 500000) {
+    systemEvents.push(createSystemAlertEvent(
+      'GOAL_PORTFOLIO_VALUE',
+      'Portfolio milestone reached',
+      `Portfolio value crossed ${formatInr(500000)}. Current: ${formatInr(portfolioValue)}.`,
+      `system:portfolio:value:${dayKey}`,
+      'info',
+      'PORTFOLIO'
+    ));
+  }
+
+  const cryptoPercent = Number(context.summary?.cryptoPercent || 0);
+  if (cryptoPercent >= 20) {
+    systemEvents.push(createSystemAlertEvent(
+      'RISK_CONCENTRATION',
+      'Crypto concentration risk',
+      `Crypto allocation is now ${cryptoPercent.toFixed(1)}% (Target: 20%).`,
+      `system:risk:crypto:${dayKey}`,
+      'risk',
+      'CRYPTO'
+    ));
+  }
+
+  return systemEvents;
+}
+
+async function buildAlertContext(rules) {
+  const summary = await apiFetch('/api/v1/portfolio/summary').catch(() => ({}));
+  const genericHoldings = safeArray(await apiFetch('/api/v1/portfolio/holdings?type=ALL').catch(() => []));
+  const stockHoldings = safeArray(await apiFetch(`/api/portfolios/${DEFAULT_PORTFOLIO_ID}/stocks/holdings`).catch(() => []));
+  const cryptoHoldings = safeArray(await apiFetch('/api/v1/crypto').catch(() => []));
+  const stockSymbols = [...new Set(rules.filter(rule => rule.assetType === 'STOCK').map(rule => rule.symbol).filter(Boolean))];
+  const cryptoSymbols = [...new Set(['BTCUSD', ...rules.filter(rule => rule.assetType === 'CRYPTO').map(rule => rule.symbol).filter(Boolean)])];
+  const snapshots = loadAlertSnapshots();
+
+  const stockQuotes = {};
+  for (const symbol of stockSymbols) {
+    try {
+      const details = await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}`);
+      stockQuotes[symbol] = {
+        companyName: details?.companyName || symbol,
+        currentPrice: Number(details?.quote?.currentPrice || 0),
+        dailyChangePercent: Number(details?.quote?.changePercent || 0)
+      };
+    } catch {}
+  }
+
+  const cryptoQuotes = {};
+  for (const symbol of cryptoSymbols) {
+    try {
+      let crypto;
+      try {
+        crypto = await apiFetch(`/api/v1/crypto/symbol/${encodeURIComponent(symbol)}`);
+      } catch {
+        crypto = await apiFetch(`/api/v1/crypto/${encodeURIComponent(symbol)}/price`, { method: 'PUT' });
+      }
+      const currentPrice = Number(crypto?.currentPrice || 0);
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const snapshot = snapshots[symbol];
+      const openingPrice = snapshot?.dayKey === todayKey && Number(snapshot?.openingPrice) > 0
+        ? Number(snapshot.openingPrice)
+        : currentPrice;
+      let dailyChangePercent = Number(crypto?.dailyChangePercent || 0);
+      if ((!Number.isFinite(dailyChangePercent) || dailyChangePercent === 0) && openingPrice > 0) {
+        dailyChangePercent = ((currentPrice - openingPrice) / openingPrice) * 100;
+      }
+      cryptoQuotes[symbol] = { currentPrice, dailyChangePercent };
+      snapshots[symbol] = { openingPrice, lastPrice: currentPrice, dayKey: todayKey, timestamp: new Date().toISOString() };
+    } catch {}
+  }
+  saveAlertSnapshots(snapshots);
+
+  const newsBySymbol = {};
+  for (const rule of rules.filter(rule => rule.type === 'NEWS' && rule.symbol)) {
+    if (newsBySymbol[rule.symbol]) continue;
+    try {
+      newsBySymbol[rule.symbol] = safeArray(await apiFetch(`/api/stocks/${encodeURIComponent(rule.symbol)}/news?limit=5`));
+    } catch {
+      newsBySymbol[rule.symbol] = [];
+    }
+  }
+
+  return { summary, genericHoldings, stockHoldings, cryptoHoldings, stockQuotes, cryptoQuotes, newsBySymbol };
+}
+
+async function evaluateAlertRule(rule, context) {
+  switch (rule.type) {
+    case 'PRICE_ABOVE':
+      return evaluatePriceRule(rule, context, price => price >= Number(rule.threshold), 'Price moved above target');
+    case 'DAILY_CHANGE':
+      return evaluateDailyChangeRule(rule, context);
+    case 'PROFIT_LOSS':
+      return evaluateProfitLossRule(rule, context);
+    case 'GOAL_PORTFOLIO_VALUE':
+      return evaluateGoalRule(rule, Number(context.summary?.totalPortfolioValue || 0), 'Portfolio value goal reached', fmt(Number(context.summary?.totalPortfolioValue || 0)));
+    case 'RISK_CONCENTRATION':
+      return evaluateRiskConcentrationRule(rule, context);
+    default:
+      return null;
+  }
+}
+
+function evaluatePriceRule(rule, context, predicate, title) {
+  const price = currentPriceForRule(rule, context);
+  if (!Number.isFinite(price) || !predicate(price)) return null;
+  const companyName = context.stockQuotes[rule.symbol]?.companyName || rule.symbol;
+  if (title.includes('above')) {
+    return createAlertEvent(rule, title, `${companyName} crossed your target price of ${fmt(rule.threshold)}.`, undefined, 'success');
+  }
+  return createAlertEvent(rule, title, `${companyName} fell below your target price of ${fmt(rule.threshold)}. Current: ${fmt(price)}.`, undefined, 'warning');
+}
+
+function evaluateDailyChangeRule(rule, context) {
+  const change = currentDailyChangeForRule(rule, context);
+  if (!Number.isFinite(change) || Math.abs(change) < Number(rule.threshold)) return null;
+  return createAlertEvent(rule, 'Daily price change alert', `${rule.symbol} moved ${change.toFixed(2)}% in a day, crossing your ${rule.threshold}% trigger.`, undefined, change < 0 ? 'danger' : 'info');
+}
+
+function evaluateProfitLossRule(rule, context) {
+  let profitLossPercent = null;
+  if (rule.assetType === 'STOCK') {
+    const stock = context.stockHoldings.find(item => String(item.symbol || '').toUpperCase() === rule.symbol);
+    profitLossPercent = stock ? Number(stock.unrealizedPnLPercent || 0) : null;
+  } else if (rule.assetType === 'CRYPTO') {
+    const crypto = context.cryptoHoldings.find(item => String(item.symbol || '').toUpperCase() === rule.symbol);
+    profitLossPercent = crypto && Number(crypto.investedAmount || 0) > 0
+      ? (Number(crypto.profitLoss || 0) / Number(crypto.investedAmount || 1)) * 100
+      : null;
+  } else if (rule.assetType === 'BOND') {
+    const bond = context.genericHoldings.find(item => item.asset_type === 'BOND' && String(item.symbol || '').toUpperCase() === rule.symbol);
+    profitLossPercent = bond && Number(bond.amount_invested || 0) > 0
+      ? (Number(bond.profit_loss || 0) / Number(bond.amount_invested || 1)) * 100
+      : null;
+  }
+  if (!Number.isFinite(profitLossPercent) || Math.abs(profitLossPercent) < Number(rule.threshold)) return null;
+  return createAlertEvent(rule, 'Profit & loss alert', `${rule.symbol} P/L is ${profitLossPercent.toFixed(2)}%, crossing your ${rule.threshold}% threshold.`, undefined, profitLossPercent < 0 ? 'danger' : 'success');
+}
+
+function evaluateNewsRule(rule, context) {
+  const keyword = String(rule.keyword || '').toLowerCase();
+  const articles = safeArray(context.newsBySymbol[rule.symbol]);
+  const match = articles.find(article => `${article.headline || ''} ${article.summary || ''}`.toLowerCase().includes(keyword));
+  if (!match) return null;
+  return createAlertEvent(rule, 'News alert', `${rule.symbol}: ${match.headline}`, `news:${rule.id}:${match.url}`, 'info');
+}
+
+function evaluateGoalRule(rule, currentValue, title, currentText) {
+  if (!Number.isFinite(currentValue) || currentValue < Number(rule.threshold)) return null;
+  return createAlertEvent(rule, title, `Current value is ${currentText}, meeting your target of ${rule.threshold}.`, undefined, 'success');
+}
+
+function evaluateRiskConcentrationRule(rule, context) {
+  const scope = (rule.symbol || '').toUpperCase();
+  const key = scope === 'BOND' ? 'bondsPercent' : scope === 'CRYPTO' ? 'cryptoPercent' : 'stocksPercent';
+  const current = Number(context.summary?.[key] || 0);
+  if (!Number.isFinite(current) || current < Number(rule.threshold)) return null;
+  return createAlertEvent(rule, 'Risk concentration alert', `${scope || 'STOCK'} allocation is ${current.toFixed(2)}%, above your ${rule.threshold}% threshold.`, undefined, 'risk');
+}
+
+function evaluateRiskDrawdownRule(rule, context) {
+  const current = Number(context.summary?.totalReturnsPercent || 0);
+  const threshold = Number(rule.threshold || 0);
+  if (!Number.isFinite(current) || current > threshold) return null;
+  return createAlertEvent(rule, 'Risk drawdown alert', `Portfolio returns are ${current.toFixed(2)}%, below your limit of ${threshold}%.`, undefined, 'danger');
+}
+
+function evaluateMarketMoveRule(rule, context) {
+  const change = currentDailyChangeForRule(rule, context);
+  if (!Number.isFinite(change) || Math.abs(change) < Number(rule.threshold)) return null;
+  return createAlertEvent(rule, 'Market alert', `${rule.symbol} moved ${change.toFixed(2)}%, crossing your market alert threshold.`, undefined, Math.abs(change) >= Number(rule.threshold) * 2 ? 'danger' : 'warning');
+}
+
+function currentPriceForRule(rule, context) {
+  if (rule.assetType === 'STOCK' || rule.assetType === 'MARKET') return Number(context.stockQuotes[rule.symbol]?.currentPrice);
+  if (rule.assetType === 'CRYPTO') return Number(context.cryptoQuotes[rule.symbol]?.currentPrice);
+  return NaN;
+}
+
+function currentDailyChangeForRule(rule, context) {
+  if (rule.assetType === 'STOCK' || rule.assetType === 'MARKET') return Number(context.stockQuotes[rule.symbol]?.dailyChangePercent);
+  if (rule.assetType === 'CRYPTO') return Number(context.cryptoQuotes[rule.symbol]?.dailyChangePercent);
+  return NaN;
+}
+
+function createAlertEvent(rule, title, message, customSignature, level) {
+  return {
+    id: `event-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    ruleId: rule.id,
+    category: rule.type,
+    symbol: rule.symbol,
+    title,
+    message,
+    timestamp: new Date().toISOString(),
+    read: false,
+    level: normalizeAlertLevel(level),
+    signature: customSignature || `${rule.id}:${new Date().toISOString().slice(0, 10)}:${title}`
+  };
+}
+
+function createSystemAlertEvent(category, title, message, signature, level, symbol = '') {
+  return {
+    id: `event-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    ruleId: `system-${category}`,
+    category,
+    symbol,
+    title,
+    message,
+    timestamp: new Date().toISOString(),
+    read: false,
+    level: normalizeAlertLevel(level),
+    signature
+  };
+}
+
+function formatInr(value) {
+  if (!Number.isFinite(Number(value))) return '₹0';
+  return `₹${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 }
 
 // ─── API Helper ───────────────────────────────────────────────────────────

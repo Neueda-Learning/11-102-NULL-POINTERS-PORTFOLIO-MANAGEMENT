@@ -3,6 +3,7 @@ package com.portfolio_management.portfolio.investments.stock.controller;
 import com.portfolio_management.portfolio.investments.stock.dto.BuyStockRequest;
 import com.portfolio_management.portfolio.investments.stock.dto.CompanyDetailsResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.MarketplacePageResponse;
+import com.portfolio_management.portfolio.investments.stock.dto.StockNewsItemResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockHoldingDetailsResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockHoldingResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockPerformanceResponse;
@@ -70,6 +71,14 @@ public class StockController {
     @GetMapping("/stocks/{symbol}/performance")
     public ResponseEntity<StockPerformanceResponse> getStockPerformance(@PathVariable String symbol) {
         return ResponseEntity.ok(stockMarketService.getPerformance(symbol));
+    }
+
+    @GetMapping("/stocks/{symbol}/news")
+    public ResponseEntity<List<StockNewsItemResponse>> getStockNews(
+            @PathVariable String symbol,
+            @RequestParam(defaultValue = "5") int limit
+    ) {
+        return ResponseEntity.ok(stockMarketService.getNews(symbol, limit));
     }
 
     @PostMapping("/portfolios/{portfolioId}/stocks/buy")
