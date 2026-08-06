@@ -151,6 +151,7 @@ public class PortfolioService {
             FROM asset a
             JOIN bonds b ON a.asset_id = b.asset_id
             WHERE a.asset_type = 'BOND'
+              AND b.amount_invested > 0
             """);
     }
 
@@ -331,6 +332,9 @@ public class PortfolioService {
             case "BOND" -> {
                 Map<String, Object> b = jdbcTemplate.queryForMap("SELECT * FROM bonds WHERE asset_id=?", assetId);
                 price = bd(b.get("amount_invested"));
+                // Keep bond + asset rows so transaction history can still resolve symbol/name.
+                jdbcTemplate.update("UPDATE bonds SET amount_invested = 0 WHERE asset_id=?", assetId);
+                deleteAsset = false;
             }
             case "CRYPTO" -> {
                 Map<String, Object> c = jdbcTemplate.queryForMap("SELECT * FROM crypto WHERE asset_id=?", assetId);
