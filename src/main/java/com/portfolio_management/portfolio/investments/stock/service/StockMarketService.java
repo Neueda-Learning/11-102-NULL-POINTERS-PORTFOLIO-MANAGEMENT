@@ -15,8 +15,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class StockMarketService {
@@ -38,6 +41,7 @@ public class StockMarketService {
 
     private final FinnhubRestClient finnhubRestClient;
     private final FinnhubWebSocketClient finnhubWebSocketClient;
+    private final Map<String, FinnhubRestClient.FinnhubProfile> profileCache = new ConcurrentHashMap<>();
 
     public StockMarketService(FinnhubRestClient finnhubRestClient, FinnhubWebSocketClient finnhubWebSocketClient) {
         this.finnhubRestClient = finnhubRestClient;
@@ -87,7 +91,6 @@ public class StockMarketService {
 
         List<MarketplaceStockResponse> items = symbols.stream()
                 .map(this::loadMarketplaceItem)
-                .filter(java.util.Objects::nonNull)
                 .toList();
 
         return new MarketplacePageResponse(safePage, safeSize, totalPages(safeSize), MARKET_SYMBOLS.size(), items);
@@ -122,8 +125,8 @@ public class StockMarketService {
 
     private MarketplaceStockResponse loadMarketplaceItem(String symbol) {
         try {
-            FinnhubRestClient.FinnhubProfile profile = finnhubRestClient.getCompanyProfile(symbol);
-            FinnhubRestClient.FinnhubQuote quote = finnhubRestClient.getQuote(symbol);
+            FinnhubRestClient.FinnhubQuote quote = getQuoteWithFallback(symbol);
+            FinnhubRestClient.FinnhubProfile profile = profileCache.computeIfAbsent(symbol, this::loadProfileOrFallback);
             return new MarketplaceStockResponse(
                     symbol,
                     profile.companyName(),
@@ -132,8 +135,30 @@ public class StockMarketService {
                     quote.changePercent()
             );
         } catch (Exception ex) {
-            log.warn("Skipping symbol {} from marketplace page due to lookup error: {}", symbol, ex.getMessage());
-            return null;
+            log.warn("Quote lookup failed for symbol {}: {}", symbol, ex.getMessage());
+            return new MarketplaceStockResponse(symbol, symbol, "N/A", BigDecimal.ZERO, BigDecimal.ZERO);
+        }
+    }
+
+    private FinnhubRestClient.FinnhubProfile loadProfileOrFallback(String symbol) {
+        try {
+            return finnhubRestClient.getCompanyProfile(symbol);
+        } catch (Exception ex) {
+            log.warn("Profile lookup failed for symbol {}: {}", symbol, ex.getMessage());
+            return new FinnhubRestClient.FinnhubProfile(symbol, symbol, "N/A", "", "", "USD", "");
+        }
+    }
+
+    private FinnhubRestClient.FinnhubQuote getQuoteWithFallback(String symbol) {
+        try {
+            return finnhubRestClient.getQuote(symbol);
+        } catch (Exception primaryError) {
+            if (!symbol.contains(".")) {
+                throw primaryError;
+            }
+            String alternate = symbol.replace('.', '-');
+            log.debug("Retrying quote lookup for {} using alternate symbol {}", symbol, alternate);
+            return finnhubRestClient.getQuote(alternate);
         }
     }
 

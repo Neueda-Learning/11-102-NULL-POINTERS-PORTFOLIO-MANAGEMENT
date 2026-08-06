@@ -19,9 +19,11 @@ const DUMMY_BOND_MARKET = [
 let pendingSell = null;
 let allocationChart = null;
 let performanceChart = null;
-let cryptoLookupTimer = null;
 let stockInsightChart = null;
+let cryptoLookupTimer = null;
 let stockSymbolLookupTimer = null;
+let stockLiveClient = null;
+const latestStockPrices = new Map();
 const DEFAULT_PORTFOLIO_ID = 1;
 const marketplaceState = {
   category: 'STOCK',
@@ -35,6 +37,7 @@ const marketplaceState = {
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
   initStockAutoFill();
+  initStockLivePrices();
   navigateTo('dashboard');
 });
 
@@ -206,9 +209,11 @@ async function loadHoldings(type = 'ALL') {
     if (type === 'ALL') {
       const [genericResult, cryptoResult] = await Promise.allSettled([genericPromise, apiFetch('/api/v1/crypto')]);
       const genericRows = genericResult.status === 'fulfilled' ? safeArray(genericResult.value) : [];
-      const stocks = genericRows.filter(row => row.asset_type === 'STOCK');
+      let stocks = genericRows.filter(row => row.asset_type === 'STOCK');
       const bonds = genericRows.filter(row => row.asset_type === 'BOND');
       const cryptos = activeCryptoHoldings(cryptoResult.status === 'fulfilled' ? cryptoResult.value : []);
+
+      stocks = await hydrateStockRowsWithLiveQuotes(stocks);
 
       let html = '';
       if (stocks.length) html += `<h4 style="margin:8px 0 8px;color:var(--text-muted);">📊 Stocks</h4>${buildStocksTable(stocks)}`;
@@ -220,7 +225,10 @@ async function loadHoldings(type = 'ALL') {
       return;
     }
 
-    const genericRows = safeArray(await genericPromise);
+    let genericRows = safeArray(await genericPromise);
+    if (type === 'STOCK') {
+      genericRows = await hydrateStockRowsWithLiveQuotes(genericRows);
+    }
     if (!genericRows.length) { container.innerHTML = emptyState(`No ${type.toLowerCase()} holdings found.`); return; }
     container.innerHTML = type === 'STOCK' ? buildStocksTable(genericRows) : buildBondsTable(genericRows);
     statusEl.innerHTML = `<span class="status-success">✅ ${genericRows.length} holding(s) loaded</span>`;
@@ -238,20 +246,53 @@ function buildStocksTable(rows) {
     const investedAmount = Number(row.cost_basis || 0);
     const profitLoss = Number(row.profit_loss || 0);
     const plPct = investedAmount > 0 ? (profitLoss / investedAmount) * 100 : 0;
-    return `<tr>
+    return `<tr data-stock-symbol="${esc(row.symbol)}" data-stock-quantity="${Number(row.quantity || 0)}" data-stock-cost-basis="${investedAmount}">
       <td><strong>${esc(row.symbol)}</strong></td>
       <td>${esc(row.asset_name)}</td>
       <td>${num(row.quantity)}</td>
       <td>${fmt(row.purchase_price)}</td>
-      <td>${fmt(row.current_price)}</td>
-      <td>${fmt(row.cost_basis)}</td>
-      <td>${fmt(row.market_value)}</td>
-      <td class="${plPct >= 0 ? 'pos' : 'neg'}">${plPct >= 0 ? '+' : ''}${plPct.toFixed(2)}%</td>
+      <td class="stock-current-price">${fmt(row.current_price)}</td>
+      <td class="stock-cost-basis">${fmt(row.cost_basis)}</td>
+      <td class="stock-market-value">${fmt(row.market_value)}</td>
+      <td class="stock-pl ${plPct >= 0 ? 'pos' : 'neg'}">${plPct >= 0 ? '+' : ''}${plPct.toFixed(2)}%</td>
       <td><button class="detail-btn" onclick="showStockTransactions('${escJs(row.symbol)}')">Details</button></td>
       <td><button class="sell-btn" onclick='openSellModal(${json({ id: row.asset_id, symbol: row.symbol, name: row.asset_name, quantity: row.quantity, type: "STOCK" })})'>Sell</button></td>
     </tr>`;
   }).join('');
   return `<table class="data-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+
+async function hydrateStockRowsWithLiveQuotes(rows) {
+  const stockRows = safeArray(rows);
+  if (!stockRows.length) return [];
+
+  const liveResults = await Promise.allSettled(
+    stockRows.map(row => apiFetch(`/api/stocks/${encodeURIComponent(row.symbol)}`))
+  );
+
+  return stockRows.map((row, index) => {
+    const result = liveResults[index];
+    const livePrice = result?.status === 'fulfilled'
+      ? Number(result.value?.quote?.currentPrice || 0)
+      : 0;
+
+    const quantity = Number(row.quantity || 0);
+    const purchasePrice = Number(row.purchase_price || 0);
+    const costBasis = Number(row.cost_basis || (quantity * purchasePrice));
+    const effectivePrice = livePrice > 0 ? livePrice : Number(row.current_price || purchasePrice || 0);
+    const marketValue = quantity * effectivePrice;
+    const profitLoss = marketValue - costBasis;
+
+    latestStockPrices.set(String(row.symbol || '').toUpperCase(), effectivePrice);
+
+    return {
+      ...row,
+      current_price: effectivePrice,
+      market_value: marketValue,
+      cost_basis: costBasis,
+      profit_loss: profitLoss
+    };
+  });
 }
 
 function buildBondsTable(rows) {
@@ -557,6 +598,69 @@ function buildLookupCard(crypto) {
         <button class="btn btn-primary btn-sm" onclick='openAddModal("CRYPTO", ${json({ symbol: crypto.symbol, name: crypto.name, currentPrice: crypto.currentPrice })})'>Buy</button>
       </div>
     </div>`;
+}
+
+function initStockLivePrices() {
+  if (typeof StompJs === 'undefined') {
+    console.warn('STOMP client not found; live stock updates disabled.');
+    return;
+  }
+  if (stockLiveClient && stockLiveClient.active) {
+    return;
+  }
+
+  stockLiveClient = new StompJs.Client({
+    brokerURL: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/stocks`,
+    reconnectDelay: 5000,
+    heartbeatIncoming: 10000,
+    heartbeatOutgoing: 10000,
+    debug: () => {}
+  });
+
+  stockLiveClient.onConnect = () => {
+    stockLiveClient.subscribe('/topic/stocks/prices', message => {
+      try {
+        const payload = JSON.parse(message.body || '{}');
+        const symbol = String(payload.symbol || '').toUpperCase();
+        const price = Number(payload.price || 0);
+        if (!symbol || !(price > 0)) {
+          return;
+        }
+        latestStockPrices.set(symbol, price);
+        applyLiveStockPrice(symbol, price);
+      } catch (error) {
+        console.warn('Invalid live stock message', error);
+      }
+    });
+  };
+
+  stockLiveClient.onStompError = frame => {
+    console.warn('Stock live update broker error:', frame.headers?.message || frame.body || 'unknown');
+  };
+
+  stockLiveClient.activate();
+}
+
+function applyLiveStockPrice(symbol, price) {
+  document.querySelectorAll(`tr[data-stock-symbol="${symbol}"]`).forEach(row => {
+    const quantity = Number(row.dataset.stockQuantity || 0);
+    const costBasis = Number(row.dataset.stockCostBasis || 0);
+    const marketValue = quantity * price;
+    const profitLoss = marketValue - costBasis;
+    const plPct = costBasis > 0 ? (profitLoss / costBasis) * 100 : 0;
+
+    const currentPriceCell = row.querySelector('.stock-current-price');
+    const marketValueCell = row.querySelector('.stock-market-value');
+    const plCell = row.querySelector('.stock-pl');
+
+    if (currentPriceCell) currentPriceCell.textContent = fmt(price);
+    if (marketValueCell) marketValueCell.textContent = fmt(marketValue);
+    if (plCell) {
+      plCell.textContent = `${plPct >= 0 ? '+' : ''}${plPct.toFixed(2)}%`;
+      plCell.classList.toggle('pos', plPct >= 0);
+      plCell.classList.toggle('neg', plPct < 0);
+    }
+  });
 }
 
 // ─── Transactions ─────────────────────────────────────────────────────────
