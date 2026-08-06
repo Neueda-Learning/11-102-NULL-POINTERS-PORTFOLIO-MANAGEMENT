@@ -5,6 +5,19 @@ const CRYPTO_MARKET_SYMBOLS = [
   'ADAUSD', 'DOGEUSD', 'TRXUSD', 'AVAXUSD', 'MATICUSD'
 ];
 
+const CRYPTO_NAME_MAP = {
+  BTCUSD: 'Bitcoin',
+  ETHUSD: 'Ethereum',
+  BNBUSD: 'BNB',
+  XRPUSD: 'XRP',
+  SOLUSD: 'Solana',
+  ADAUSD: 'Cardano',
+  DOGEUSD: 'Dogecoin',
+  TRXUSD: 'TRON',
+  AVAXUSD: 'Avalanche',
+  MATICUSD: 'Polygon'
+};
+
 const DUMMY_BOND_MARKET = [
   { issuer: 'HDFC Bank', bondType: 'Corporate Bond', interestRate: 7.25, tenureMonths: 12, minInvestment: 1000 },
   { issuer: 'ICICI Bank', bondType: 'Bank Bond', interestRate: 7.1, tenureMonths: 24, minInvestment: 2000 },
@@ -414,7 +427,7 @@ function buildMarketplaceCryptoMarketTable(rows) {
       <td>${esc(row.name)}</td>
       <td><span class="badge badge-crypto">CRYPTO</span></td>
       <td>${fmt(row.currentPrice)}</td>
-      <td>${fmt(row.currentValue)}</td>
+      <td>${fmt(row.trackedValue)}</td>
       <td class="${profitClass}">${profit >= 0 ? '+' : ''}${fmt(profit)}</td>
       <td>
         <div class="action-group">
@@ -1095,11 +1108,28 @@ async function apiFetch(url, options = {}) {
 function normalizeCryptos(rows) { return safeArray(rows).map(normalizeCrypto); }
 
 function normalizeCrypto(row) {
+  const symbol = String(row.symbol || row.displaySymbol || '').toUpperCase();
+  const quantity = Number(row.quantity ?? row.holdingQuantity ?? 0);
+  const buyPrice = Number(row.buyPrice ?? row.buy_price ?? 0);
+  const currentPrice = Number(row.currentPrice ?? row.current_price ?? 0);
+  const investedAmount = Number(row.investedAmount ?? row.invested_amount ?? (quantity * buyPrice));
+  const currentValue = Number(row.currentValue ?? row.current_value ?? (quantity * currentPrice));
+  const profitLoss = Number(row.profitLoss ?? row.profit_loss ?? (currentValue - investedAmount));
+
+  // Marketplace rows usually have zero holdings; show 1-unit live value instead of 0.
+  const trackedValue = currentValue > 0 ? currentValue : (currentPrice > 0 ? currentPrice : 0);
+
   return {
-    cryptoId: row.cryptoId, symbol: row.symbol, name: row.name,
-    quantity: Number(row.quantity || 0), buyPrice: Number(row.buyPrice || 0),
-    currentPrice: Number(row.currentPrice || 0), investedAmount: Number(row.investedAmount || 0),
-    currentValue: Number(row.currentValue || 0), profitLoss: Number(row.profitLoss || 0)
+    cryptoId: row.cryptoId,
+    symbol,
+    name: row.name || CRYPTO_NAME_MAP[symbol] || symbol,
+    quantity,
+    buyPrice,
+    currentPrice,
+    investedAmount,
+    currentValue,
+    trackedValue,
+    profitLoss
   };
 }
 
