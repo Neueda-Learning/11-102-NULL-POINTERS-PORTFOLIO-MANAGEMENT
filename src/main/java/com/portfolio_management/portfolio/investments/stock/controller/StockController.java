@@ -9,11 +9,13 @@ import com.portfolio_management.portfolio.investments.stock.dto.StockHoldingResp
 import com.portfolio_management.portfolio.investments.stock.dto.StockPerformanceResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockSearchItemResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockSubscriptionsRequest;
+import com.portfolio_management.portfolio.investments.stock.dto.StockTodayPredictionsResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockTransactionResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.TradeResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.SellStockRequest;
 import com.portfolio_management.portfolio.investments.stock.service.StockHoldingService;
 import com.portfolio_management.portfolio.investments.stock.service.StockMarketService;
+import com.portfolio_management.portfolio.investments.stock.service.StockPredictionService;
 import com.portfolio_management.portfolio.investments.stock.service.StockTradingService;
 import com.portfolio_management.portfolio.investments.stock.websocket.FinnhubWebSocketClient;
 import jakarta.validation.Valid;
@@ -35,17 +37,20 @@ public class StockController {
     private final StockMarketService stockMarketService;
     private final StockTradingService stockTradingService;
     private final StockHoldingService stockHoldingService;
+    private final StockPredictionService stockPredictionService;
     private final FinnhubWebSocketClient finnhubWebSocketClient;
 
     public StockController(
             StockMarketService stockMarketService,
             StockTradingService stockTradingService,
             StockHoldingService stockHoldingService,
+            StockPredictionService stockPredictionService,
             FinnhubWebSocketClient finnhubWebSocketClient
     ) {
         this.stockMarketService = stockMarketService;
         this.stockTradingService = stockTradingService;
         this.stockHoldingService = stockHoldingService;
+        this.stockPredictionService = stockPredictionService;
         this.finnhubWebSocketClient = finnhubWebSocketClient;
     }
 
@@ -100,6 +105,11 @@ public class StockController {
     @GetMapping("/portfolios/{portfolioId}/stocks/holdings")
     public ResponseEntity<List<StockHoldingResponse>> getStockHoldings(@PathVariable Long portfolioId) {
         return ResponseEntity.ok(stockHoldingService.getHoldings(portfolioId));
+    }
+
+    @GetMapping("/portfolios/{portfolioId}/stocks/predictions/today")
+    public ResponseEntity<StockTodayPredictionsResponse> getTodayStockPredictions(@PathVariable Long portfolioId) {
+        return ResponseEntity.ok(stockPredictionService.getTodayPredictions(portfolioId));
     }
 
     @GetMapping("/portfolios/{portfolioId}/stocks/holdings/{symbol}")

@@ -501,8 +501,12 @@ async function loadPerformanceChart() {
 async function loadHoldings(type = 'ALL') {
   const container = document.getElementById('holdings-container');
   const statusEl = document.getElementById('holdings-status');
+  const aiContainer = document.getElementById('stock-ai-predictions-container');
+  const aiStatusEl = document.getElementById('stock-ai-status');
   container.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;">Loading...</p>';
   statusEl.innerHTML = '';
+  if (aiContainer) aiContainer.innerHTML = '';
+  if (aiStatusEl) aiStatusEl.innerHTML = '';
 
   try {
     if (type === 'CRYPTO') {
@@ -530,6 +534,11 @@ async function loadHoldings(type = 'ALL') {
 
       container.innerHTML = html || emptyState('No holdings found. Add your first asset!');
       statusEl.innerHTML = `<span class="status-success">✅ ${stocks.length + bonds.length + cryptos.length} holding(s) loaded</span>`;
+      if (stocks.length > 0) {
+        await loadStockPredictions();
+      } else {
+        renderStockPredictionEmpty('No stock holdings found for AI predictions.');
+      }
       return;
     }
 
@@ -540,9 +549,77 @@ async function loadHoldings(type = 'ALL') {
     if (!genericRows.length) { container.innerHTML = emptyState(`No ${type.toLowerCase()} holdings found.`); return; }
     container.innerHTML = type === 'STOCK' ? buildStocksTable(genericRows) : buildBondsTable(genericRows);
     statusEl.innerHTML = `<span class="status-success">✅ ${genericRows.length} holding(s) loaded</span>`;
+    if (type === 'STOCK') {
+      await loadStockPredictions();
+    } else {
+      renderStockPredictionEmpty('AI predictions are available for stock holdings only.');
+    }
   } catch (error) {
     container.innerHTML = `<p class="status-error">❌ Failed: ${esc(error.message)}</p>`;
   }
+}
+
+async function loadStockPredictions() {
+  const statusEl = document.getElementById('stock-ai-status');
+  const container = document.getElementById('stock-ai-predictions-container');
+  if (!statusEl || !container) return;
+
+  statusEl.innerHTML = '<span style="color:var(--text-muted);">Loading AI stock predictions...</span>';
+  container.innerHTML = '';
+
+  try {
+    const data = await apiFetch(`/api/portfolios/${encodeURIComponent(DEFAULT_PORTFOLIO_ID)}/stocks/predictions/today`);
+    const predictions = safeArray(data.predictions);
+    if (!predictions.length) {
+      renderStockPredictionEmpty('No predictions available right now.');
+      return;
+    }
+
+    const fallbackCount = predictions.filter(item =>
+      String(item.recommendation || '').toUpperCase() === 'HOLD'
+      && String(item.reasoning || '').toLowerCase().includes('defaulting to hold')
+    ).length;
+
+    if (fallbackCount === predictions.length) {
+      statusEl.innerHTML = `<span class="status-error">⚠️ AI service unavailable. Showing fallback HOLD guidance for ${predictions.length} stock(s).</span>`;
+    } else {
+      statusEl.innerHTML = `<span class="status-success">✅ AI predictions generated for ${predictions.length} owned stock(s)</span>`;
+    }
+    container.innerHTML = buildStockPredictionsTable(predictions);
+  } catch (error) {
+    statusEl.innerHTML = `<span class="status-error">❌ ${esc(error.message)}</span>`;
+  }
+}
+
+function renderStockPredictionEmpty(message) {
+  const statusEl = document.getElementById('stock-ai-status');
+  const container = document.getElementById('stock-ai-predictions-container');
+  if (!statusEl || !container) return;
+  statusEl.innerHTML = '';
+  container.innerHTML = `<p style="color:var(--text-muted);margin:8px 0;">${esc(message)}</p>`;
+}
+
+function buildStockPredictionsTable(rows) {
+  const head = `<tr>
+    <th>Symbol</th><th>Company</th><th>Today Change (Pred.)</th>
+    <th>Today P/L (Pred.)</th><th>Recommendation</th><th>Reasoning</th></tr>`;
+
+  const body = rows.map(row => {
+    const change = Number(row.predictedChangePercentToday || 0);
+    const pnl = Number(row.predictedProfitLossToday || 0);
+    const rec = String(row.recommendation || 'HOLD').toUpperCase();
+    const recClass = rec === 'BUY' ? 'pos' : (rec === 'SELL' ? 'neg' : '');
+    return `<tr>
+      <td><strong>${esc(row.symbol)}</strong></td>
+      <td>${esc(row.companyName)}</td>
+      <td class="${change >= 0 ? 'pos' : 'neg'}">${change >= 0 ? '+' : ''}${change.toFixed(2)}%</td>
+      <td class="${pnl >= 0 ? 'pos' : 'neg'}">${pnl >= 0 ? '+' : ''}${fmt(pnl)}</td>
+      <td class="${recClass}"><strong>${esc(rec)}</strong></td>
+      <td>${esc(row.reasoning || 'No rationale provided')}</td>
+    </tr>`;
+  }).join('');
+
+  return `<table class="data-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 
 function buildStocksTable(rows) {
