@@ -330,8 +330,9 @@ async function loadMarketplace() {
 
   pagerRow.style.display = isStock ? 'flex' : 'none';
   if (cryptoToolbar) cryptoToolbar.style.display = isCrypto ? 'flex' : 'none';
-  container.style.display = isCrypto ? 'none' : '';
-  marketGrid.style.display = isCrypto ? '' : 'none';
+  // Keep a single table container for STOCK/BOND/CRYPTO marketplace views.
+  container.style.display = '';
+  marketGrid.style.display = 'none';
 
   try {
     if (isStock) {
@@ -342,14 +343,14 @@ async function loadMarketplace() {
       container.innerHTML = buildMarketplaceStocksTable(data.items || []);
       statusEl.innerHTML = `<span class="status-success">✅ ${data.items?.length || 0} stock(s) loaded</span>`;
     } else if (isCrypto) {
-      marketGrid.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;">Refreshing market data...</p>';
+      container.innerHTML = '<p style="color:var(--text-muted);padding:12px 0;">Refreshing market data...</p>';
       await refreshMarketplacePrices(true);
       const marketData = normalizeCryptos(await apiFetch('/api/v1/crypto/batch', {
         method: 'POST',
         body: JSON.stringify(CRYPTO_MARKET_SYMBOLS)
       }));
       const sorted = [...marketData].sort((a, b) => Number(b.currentPrice || 0) - Number(a.currentPrice || 0));
-      marketGrid.innerHTML = sorted.length ? buildMarketplaceCards(sorted) : emptyState('No marketplace crypto data available.');
+      container.innerHTML = sorted.length ? buildMarketplaceCryptoMarketTable(sorted) : emptyState('No marketplace crypto data available.');
       statusEl.innerHTML = `<span class="status-success">✅ ${sorted.length} crypto asset(s) loaded</span>`;
     } else {
       // BOND — use dummy market data
@@ -357,9 +358,36 @@ async function loadMarketplace() {
       statusEl.innerHTML = `<span class="status-success">✅ ${DUMMY_BOND_MARKET.length} bond(s) loaded</span>`;
     }
   } catch (e) {
-    const target = isCrypto ? marketGrid : container;
-    target.innerHTML = `<p class="status-error">❌ Failed: ${esc(e.message)}</p>`;
+    container.innerHTML = `<p class="status-error">❌ Failed: ${esc(e.message)}</p>`;
   }
+}
+
+function buildMarketplaceCryptoMarketTable(rows) {
+  const head = `<tr>
+    <th>Symbol</th><th>Name</th><th>Type</th>
+    <th>Current Price</th><th>Tracked Value</th><th>P/L</th><th>Actions</th></tr>`;
+
+  const body = rows.map(row => {
+    const profit = Number(row.profitLoss || 0);
+    const profitClass = profit >= 0 ? 'pos' : 'neg';
+    return `<tr>
+      <td><strong>${esc(row.symbol)}</strong></td>
+      <td>${esc(row.name)}</td>
+      <td><span class="badge badge-crypto">CRYPTO</span></td>
+      <td>${fmt(row.currentPrice)}</td>
+      <td>${fmt(row.currentValue)}</td>
+      <td class="${profitClass}">${profit >= 0 ? '+' : ''}${fmt(profit)}</td>
+      <td>
+        <div class="action-group">
+          <button class="btn btn-secondary btn-sm" onclick="showCryptoDetails(${row.cryptoId})">Details</button>
+          <button class="btn btn-secondary btn-sm" onclick="refreshCryptoPrice('${escJs(row.symbol)}', true)">Refresh</button>
+          <button class="btn btn-primary btn-sm" onclick='openAddModal("CRYPTO", ${json({ symbol: row.symbol, name: row.name, currentPrice: row.currentPrice })})'>Buy</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `<table class="data-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 
 function changeMarketplacePage(delta) {
