@@ -12,10 +12,13 @@ import com.portfolio_management.portfolio.investments.stock.dto.StockPerformance
 import com.portfolio_management.portfolio.investments.stock.dto.StockQuoteResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockSearchItemResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockSubscriptionsRequest;
+import com.portfolio_management.portfolio.investments.stock.dto.StockTodayPredictionItemResponse;
+import com.portfolio_management.portfolio.investments.stock.dto.StockTodayPredictionsResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockTransactionResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.TradeResponse;
 import com.portfolio_management.portfolio.investments.stock.service.StockHoldingService;
 import com.portfolio_management.portfolio.investments.stock.service.StockMarketService;
+import com.portfolio_management.portfolio.investments.stock.service.StockPredictionService;
 import com.portfolio_management.portfolio.investments.stock.service.StockTradingService;
 import com.portfolio_management.portfolio.investments.stock.websocket.FinnhubWebSocketClient;
 import java.math.BigDecimal;
@@ -49,13 +52,16 @@ class StockControllerUnitTest {
     private StockHoldingService stockHoldingService;
 
     @Mock
+    private StockPredictionService stockPredictionService;
+
+    @Mock
     private FinnhubWebSocketClient finnhubWebSocketClient;
 
     private StockController stockController;
 
     @BeforeEach
     void setUp() {
-        stockController = new StockController(stockMarketService, stockTradingService, stockHoldingService, finnhubWebSocketClient);
+        stockController = new StockController(stockMarketService, stockTradingService, stockHoldingService, stockPredictionService, finnhubWebSocketClient);
     }
 
     @Test
@@ -176,6 +182,30 @@ class StockControllerUnitTest {
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertSame(details, response.getBody());
+    }
+
+    @Test
+    void getTodayStockPredictions_returnsOkWithBody() {
+        StockTodayPredictionsResponse predictions = new StockTodayPredictionsResponse(
+                1L,
+                Instant.parse("2026-08-06T00:00:00Z"),
+                List.of(new StockTodayPredictionItemResponse(
+                        "AAPL",
+                        "Apple Inc.",
+                        new BigDecimal("2.0000"),
+                        new BigDecimal("220.00"),
+                        new BigDecimal("1.50"),
+                        new BigDecimal("6.60"),
+                        "BUY",
+                        "Positive trend"
+                ))
+        );
+        when(stockPredictionService.getTodayPredictions(1L)).thenReturn(predictions);
+
+        ResponseEntity<StockTodayPredictionsResponse> response = stockController.getTodayStockPredictions(1L);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertSame(predictions, response.getBody());
     }
 
     @Test
