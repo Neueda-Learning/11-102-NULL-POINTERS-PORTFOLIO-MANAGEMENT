@@ -12,7 +12,6 @@ pipeline {
         ENV_FILE = '.env'
         APP_PORT = '8085'
         SERVER_PORT = '8080'
-        FINNHUB_API_KEY = 'd9omjlhr01qmf0tb9l9gd9omjlhr01qmf0tb9la0'
     }
 
     stages {
@@ -79,6 +78,7 @@ SERVER_PORT=${env.SERVER_PORT ?: '8080'}
 FINNHUB_API_KEY=${finnhubKey}
 FINNHUB_BASE_URL=${env.FINNHUB_BASE_URL ?: 'https://finnhub.io/api/v1'}
 FINNHUB_WEBSOCKET_URL=${env.FINNHUB_WEBSOCKET_URL ?: 'wss://ws.finnhub.io'}
+GEMINI_API_KEY=${(env.GEMINI_API_KEY ?: '').trim()}
 """.trim() + "\n"
 
                     writeFile file: env.ENV_FILE, text: envContent
