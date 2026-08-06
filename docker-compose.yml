@@ -1,0 +1,57 @@
+services:
+
+  # ─── 1. MySQL Database ────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: portfolio-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-portfolio}
+      MYSQL_USER: ${MYSQL_USER:-portfolio_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-portfolio_password}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root123}"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    networks:
+      - portfolio-net
+
+  # ─── 2. Spring Boot Backend ───────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: portfolio-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-portfolio}?allowPublicKeyRetrieval=true&useSSL=false
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-portfolio_user}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-portfolio_password}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: com.mysql.cj.jdbc.Driver
+      SPRING_SQL_INIT_MODE: always
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      FINNHUB_BASE_URL: ${FINNHUB_BASE_URL:-https://finnhub.io/api/v1}
+      FINNHUB_WEBSOCKET_URL: ${FINNHUB_WEBSOCKET_URL:-wss://ws.finnhub.io}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    networks:
+      - portfolio-net
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  portfolio-net:
+    driver: bridge
