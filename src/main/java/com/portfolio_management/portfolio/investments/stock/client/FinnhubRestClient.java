@@ -162,9 +162,9 @@ public class FinnhubRestClient {
     public List<FinnhubNewsItem> getCompanyNews(String symbol, int daysBack, int limit) {
         String normalizedSymbol = symbol == null ? "" : symbol.trim().toUpperCase(Locale.ROOT);
         int safeLimit = Math.max(1, Math.min(limit, 10));
-        if (mockMode) {
-            return mockGetCompanyNews(normalizedSymbol, safeLimit);
-        }
+//        if (mockMode) {
+//            return mockGetCompanyNews(normalizedSymbol, safeLimit);
+//        }
 
         LocalDate to = LocalDate.now(ZoneOffset.UTC);
         LocalDate from = to.minusDays(Math.max(daysBack, 1));

@@ -284,7 +284,32 @@ public class FinnhubCryptoService implements CryptoService {
     private Crypto syncRelatedTables(Crypto savedCrypto, CryptoRequestDTO request, Long portfolioId) {
         String txType = normalizeTransactionType(request.getTransactionType());
         Crypto updatedCrypto = applyTradeToCrypto(savedCrypto, request.getQuantity(), request.getBuyPrice(), txType);
-        insertTransaction(updatedCrypto, portfolioId, request, txType);
+
+        BigDecimal txQuantity = request.getQuantity() != null ? request.getQuantity() : BigDecimal.ZERO;
+        BigDecimal marketPrice = updatedCrypto.getCurrentPrice() != null ? updatedCrypto.getCurrentPrice() : BigDecimal.ZERO;
+        BigDecimal buyPrice = request.getBuyPrice() != null && request.getBuyPrice().compareTo(BigDecimal.ZERO) > 0
+                ? request.getBuyPrice()
+                : marketPrice;
+        BigDecimal executionPrice = "BUY".equals(txType) ? buyPrice : marketPrice;
+        BigDecimal cashDelta = txQuantity.multiply(executionPrice).setScale(2, RoundingMode.HALF_UP);
+
+        Portfolio portfolio = getPortfolioOrThrow(portfolioId);
+        if ("BUY".equals(txType)) {
+            BigDecimal available = portfolio.getCashBalance() != null ? portfolio.getCashBalance() : BigDecimal.ZERO;
+            if (available.compareTo(cashDelta) < 0) {
+                throw new IllegalArgumentException("Insufficient cash balance. Required: "
+                        + cashDelta.stripTrailingZeros().toPlainString()
+                        + ", available: "
+                        + available.setScale(2, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString());
+            }
+            portfolio.setCashBalance(available.subtract(cashDelta).setScale(2, RoundingMode.HALF_UP));
+        } else {
+            BigDecimal available = portfolio.getCashBalance() != null ? portfolio.getCashBalance() : BigDecimal.ZERO;
+            portfolio.setCashBalance(available.add(cashDelta).setScale(2, RoundingMode.HALF_UP));
+        }
+        portfolioRepository.save(portfolio);
+
+        insertTransaction(updatedCrypto, portfolioId, txQuantity, executionPrice, txType);
         return updatedCrypto;
     }
 
@@ -354,18 +379,22 @@ public class FinnhubCryptoService implements CryptoService {
         return cryptoRepository.save(crypto);
     }
 
-    private void insertTransaction(Crypto savedCrypto, Long portfolioId, CryptoRequestDTO request, String txType) {
-        BigDecimal txQuantity = request.getQuantity() != null ? request.getQuantity() : BigDecimal.ZERO;
+    private void insertTransaction(Crypto savedCrypto, Long portfolioId, BigDecimal txQuantity, BigDecimal executionPrice, String txType) {
 
         Transaction transaction = new Transaction();
         transaction.setPortfolioId(portfolioId);
         transaction.setAssetId(savedCrypto.getAssetId());
         transaction.setTransactionType(txType);
         transaction.setQuantity(txQuantity);
-        transaction.setTransactionPrice(savedCrypto.getCurrentPrice());
+        transaction.setTransactionPrice(executionPrice);
         transaction.setTransactionDate(LocalDateTime.now());
 
         transactionRepository.save(transaction);
+    }
+
+    private Portfolio getPortfolioOrThrow(Long portfolioId) {
+        return portfolioRepository.findById(portfolioId)
+                .orElseThrow(() -> new IllegalArgumentException("Portfolio not found with ID: " + portfolioId));
     }
 
     private String normalizeTransactionType(String transactionType) {

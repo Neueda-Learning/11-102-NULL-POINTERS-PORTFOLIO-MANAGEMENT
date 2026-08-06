@@ -389,8 +389,11 @@
       <p id="sell-help-text" style="color:var(--text-muted);font-size:.875rem;">This records a SELL transaction and updates your holdings from the backend.</p>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeSellModal()">Cancel</button>
-      <button class="btn btn-danger" onclick="reviewSellTrade()">Review Sell</button>
+      <span id="sell-status" class="status-msg"></span>
+      <div style="display:flex;gap:12px;">
+        <button class="btn btn-secondary" onclick="closeSellModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="reviewSellTrade()">Review Sell</button>
+      </div>
     </div>
   </div>
 </div>
@@ -403,6 +406,7 @@
       <button class="modal-close" onclick="closeTradePreviewModal()">✕</button>
     </div>
     <div class="modal-body">
+      <div id="trade-preview-status" class="status-bar"></div>
       <div id="trade-preview-content"></div>
     </div>
     <div class="modal-footer">
