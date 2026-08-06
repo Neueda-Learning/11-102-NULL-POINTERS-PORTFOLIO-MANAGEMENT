@@ -1,92 +1,60 @@
 services:
   mysql:
     image: mysql:8.0
-    container_name: tms-mysql
+    container_name: portfolio-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-n3u3da!}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-tms_db}
-      MYSQL_USER: ${MYSQL_USER:-tms_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-tms_password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-portfolio}
+      MYSQL_USER: ${MYSQL_USER:-portfolio_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-portfolio_password}
     ports:
-      - "3306:3306"
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./Backend/transactions/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
-    networks:
-      - tms-network
     healthcheck:
-      test:
-        [
-          "CMD",
-          "mysqladmin",
-          "ping",
-          "-h",
-          "localhost",
-          "-u",
-          "root",
-          "-p${MYSQL_ROOT_PASSWORD:-n3u3da!}",
-        ]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root123}"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 15
       start_period: 30s
+    networks:
+      - portfolio-network
 
-  backend:
+  app:
     build:
       context: .
       dockerfile: Dockerfile
-      target: backend
-    container_name: tms-backend
+    container_name: portfolio-app
     restart: unless-stopped
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-transactions}?createDatabaseIfNotExist=true
-      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-root}
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-n3u3da!}
-      SPRING_DATASOURCE_DRIVER_CLASS_NAME: com.mysql.cj.jdbc.Driver
-      SPRING_SQL_INIT_MODE: always
-      SPRING_SQL_INIT_SCHEMA_LOCATIONS: classpath:schema.sql
-      SPRING_SQL_INIT_DATA_LOCATIONS: classpath:seed_data.sql
-      FRONTEND_URL: http://localhost:8085
-      SPRING_PROFILES_ACTIVE: docker
-      SERVER_PORT: 8080
-    ports:
-      - "8080:8080"
     depends_on:
       mysql:
         condition: service_healthy
-    networks:
-      - tms-network
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-8080}
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-portfolio}?allowPublicKeyRetrieval=true&useSSL=false
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-portfolio_user}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-portfolio_password}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: com.mysql.cj.jdbc.Driver
+      SPRING_SQL_INIT_MODE: always
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      FINNHUB_BASE_URL: ${FINNHUB_BASE_URL:-https://finnhub.io/api/v1}
+      FINNHUB_WEBSOCKET_URL: ${FINNHUB_WEBSOCKET_URL:-wss://ws.finnhub.io}
+    ports:
+      - "${APP_PORT:-8085}:8080"
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget -qO- http://localhost:8080/rules >/dev/null || exit 1",
-        ]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api-docs >/dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 90s
-
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: frontend
-    container_name: tms-frontend
-    restart: unless-stopped
-    ports:
-      - "8085:80"
-    depends_on:
-      backend:
-        condition: service_healthy
     networks:
-      - tms-network
+      - portfolio-network
 
 volumes:
   mysql_data:
     driver: local
 
 networks:
-  tms-network:
+  portfolio-network:
     driver: bridge
