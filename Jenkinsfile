@@ -176,7 +176,18 @@ JWT_SECRET=${env.JWT_SECRET ?: 'd83f5e2a7c1b94d6e8f0a2b4c6d8e0f2a4b6c8d0e2f4a6b8
                         // even if the mysql_data volume already existed from a previous deploy.
                         // CREATE TABLE IF NOT EXISTS makes this safe to re-run every build.
                         // This MUST happen before the backend container starts.
-                        sh "${composeCmd} --env-file .env exec -T mysql sh -c 'mysql -u root -p\"\$MYSQL_ROOT_PASSWORD\" \"\$MYSQL_DATABASE\" < /docker-entrypoint-initdb.d/schema.sql'"
+                        sh """
+set -e
+if ${composeCmd} --env-file .env exec -T mysql sh -c 'mysql -u root -p"\\$MYSQL_ROOT_PASSWORD" "\\$MYSQL_DATABASE" < /docker-entrypoint-initdb.d/schema.sql'; then
+    echo "Schema initialized with root account."
+elif ${composeCmd} --env-file .env exec -T mysql sh -c 'mysql -u"\\$MYSQL_USER" -p"\\$MYSQL_PASSWORD" "\\$MYSQL_DATABASE" < /docker-entrypoint-initdb.d/schema.sql'; then
+    echo "Schema initialized with application account."
+else
+    echo "Schema initialization failed with both root and application credentials."
+    ${composeCmd} --env-file .env logs --tail=150 mysql
+    exit 1
+fi
+"""
                     }
                 }
             }
