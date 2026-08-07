@@ -12,7 +12,6 @@ import com.portfolio_management.portfolio.investments.stock.dto.StockPerformance
 import com.portfolio_management.portfolio.investments.stock.dto.StockQuoteResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockSearchItemResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockSubscriptionsRequest;
-import com.portfolio_management.portfolio.investments.stock.dto.StockTodayPredictionItemResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockTodayPredictionsResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.StockTransactionResponse;
 import com.portfolio_management.portfolio.investments.stock.dto.TradeResponse;
